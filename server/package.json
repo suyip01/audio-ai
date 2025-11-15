@@ -1,0 +1,27 @@
+{
+  "name": "ai-audio-server",
+  "version": "1.0.0",
+  "description": "AI Audio Transcription Server",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "node src/test-transcription.js"
+  },
+  "dependencies": {
+    "audiobuffer-to-wav": "^1.0.0",
+    "axios": "^1.6.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "form-data": "^4.0.0",
+    "multer": "^1.4.5-lts.1",
+    "node-wav": "^0.0.2",
+    "openai": "^6.9.0",
+    "wav": "^1.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
