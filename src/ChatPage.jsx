@@ -32,6 +32,11 @@ const ChatPage = () => {
   const isMobile = useResponsive();
   const sessionId = useSessionId(user?.id);
   const currentTranscriptionMessageIdRef = useRef(null);
+  const currentBotMessageIdRef = useRef(null);
+  const pendingBotTextRef = useRef('');
+  const typewriterIntervalRef = useRef(null);
+  const typewriterProgressRef = useRef(0);
+  const ttsStartedRef = useRef(false);
   const getHistory = useCallback(() => {
     return messages
       .filter(m => m.type === 'user' || m.type === 'bot')
@@ -61,8 +66,86 @@ const ChatPage = () => {
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: data.error || '转录失败' } : m));
     } else if (data.type === 'chat_complete') {
       const content = data.response?.content || data.content || '';
-      const botMsg = { id: Date.now() + 1, type: 'bot', content, timestamp: new Date(), isStreaming: false, responseType: 'chat_complete' };
+      pendingBotTextRef.current = content || '';
+    } else if (data.type === 'tts_start') {
+      const ttsMsgId = Date.now() + 1;
+      currentTranscriptionMessageIdRef.current = ttsMsgId;
+      currentBotMessageIdRef.current = ttsMsgId;
+      ttsStartedRef.current = false;
+      typewriterProgressRef.current = 0;
+      const botMsg = { id: ttsMsgId, type: 'bot', content: '', timestamp: new Date(), isStreaming: true, responseType: 'tts', data: { tts: { url: null } } };
       setMessages(prev => [...prev, botMsg]);
+    } else if (data.type === 'tts_complete') {
+      const id = currentTranscriptionMessageIdRef.current;
+      if (id) {
+        setMessages(prev => prev.map(m => m.id === id ? { ...m, isStreaming: false } : m));
+      }
+      if (typewriterIntervalRef.current) {
+        clearInterval(typewriterIntervalRef.current);
+        typewriterIntervalRef.current = null;
+      }
+      const fullText = pendingBotTextRef.current || '';
+      const progress = typewriterProgressRef.current || 0;
+      if (fullText && progress < fullText.length) {
+        const id2 = currentTranscriptionMessageIdRef.current;
+        setMessages(prev => prev.map(m => m.id === id2 ? { ...m, content: fullText } : m));
+      }
+    } else if (data.type === 'tts_chunk') {
+      const id = currentTranscriptionMessageIdRef.current;
+      const format = data.audio?.format || 'wav';
+      const base64 = data.audio?.data;
+      if (id && base64) {
+        const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        setMessages(prev => prev.map(m => {
+          if (m.id !== id) return m;
+          const existing = m.data?.tts?.buffer || new Uint8Array(0);
+          const merged = new Uint8Array(existing.length + bytes.length);
+          merged.set(existing);
+          merged.set(bytes, existing.length);
+          const url = merged.length >= 256 * 1024 ? URL.createObjectURL(new Blob([merged], { type: `audio/${format}` })) : m.data?.tts?.url || null;
+          return { ...m, data: { ...(m.data || {}), tts: { buffer: merged, url } } };
+        }));
+        if (!ttsStartedRef.current) {
+          ttsStartedRef.current = true;
+          const fullText = pendingBotTextRef.current || '';
+          const id2 = currentTranscriptionMessageIdRef.current;
+          if (fullText && id2) {
+            if (typewriterIntervalRef.current) {
+              clearInterval(typewriterIntervalRef.current);
+            }
+            typewriterProgressRef.current = 0;
+            typewriterIntervalRef.current = setInterval(() => {
+              const text = pendingBotTextRef.current || '';
+              if (!text) {
+                clearInterval(typewriterIntervalRef.current);
+                typewriterIntervalRef.current = null;
+                return;
+              }
+              const step = Math.max(1, Math.ceil(text.length / 120));
+              typewriterProgressRef.current = Math.min(text.length, typewriterProgressRef.current + step);
+              const slice = text.slice(0, typewriterProgressRef.current);
+              setMessages(prev => prev.map(m => m.id === id2 ? { ...m, content: slice } : m));
+              if (typewriterProgressRef.current >= text.length) {
+                clearInterval(typewriterIntervalRef.current);
+                typewriterIntervalRef.current = null;
+              }
+            }, 30);
+          }
+        }
+      }
+    } else if (data.type === 'tts_error') {
+      if (typewriterIntervalRef.current) {
+        clearInterval(typewriterIntervalRef.current);
+        typewriterIntervalRef.current = null;
+      }
+      const content = pendingBotTextRef.current || (data.error || '语音生成失败');
+      const id = currentBotMessageIdRef.current;
+      if (id) {
+        setMessages(prev => prev.map(m => m.id === id ? { ...m, isStreaming: false, content } : m));
+      } else {
+        const botMsg = { id: Date.now() + 3, type: 'bot', content, timestamp: new Date(), isStreaming: false, responseType: 'tts_error', isError: data.error ? true : false };
+        setMessages(prev => [...prev, botMsg]);
+      }
     }
   }, []);
 
@@ -149,6 +232,10 @@ const ChatPage = () => {
       // Clean up streaming state
       setIsTyping(false);
       setStreamingMessage(null);
+      if (typewriterIntervalRef.current) {
+        clearInterval(typewriterIntervalRef.current);
+        typewriterIntervalRef.current = null;
+      }
       
     };
   }, [disconnectSSE]);
@@ -424,6 +511,9 @@ const ChatPage = () => {
                               <div className="overflow-x-auto max-w-full">
                                 {renderDataTable(message.data.conversations, 'conversations', message.id)}
                               </div>
+                            )}
+                            {message.data.tts?.url && (
+                              <audio autoPlay playsInline preload="auto" src={message.data.tts.url} style={{ display: 'none' }} />
                             )}
                         </div>
                       )}

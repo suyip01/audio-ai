@@ -5,11 +5,13 @@ import { config } from './config/config.js';
 import AudioService from './services/audioService.js';
 import TranscriptionService from './services/transcriptionService.js';
 import TextGenerationService from './services/textGenerationService.js';
+import TTSService from './services/ttsService.js';
 
 const app = express();
 const audioService = new AudioService();
 const transcriptionService = new TranscriptionService();
 const textGenerationService = new TextGenerationService();
+const ttsService = new TTSService();
 
 // 中间件
 app.use(cors());
@@ -141,6 +143,21 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
           type: 'chat_complete',
           response: { content: aiResponse }
         })}\n\n`);
+
+        try {
+          console.log('开始语音合成(TTS)...');
+          res.write(`data: ${JSON.stringify({ type: 'tts_start', message: '正在生成语音...' })}\n\n`);
+          const stream = ttsService.synthesizeStream(aiResponse);
+          for await (const chunk of stream) {
+            const base64 = chunk.toString('base64');
+            res.write(`data: ${JSON.stringify({ type: 'tts_chunk', audio: { data: base64, format: config.tts.defaultFormat } })}\n\n`);
+          }
+          res.write(`data: ${JSON.stringify({ type: 'tts_complete' })}\n\n`);
+          console.log('语音合成流式输出完成');
+        } catch (ttsErr) {
+          console.error('语音合成失败:', ttsErr);
+          res.write(`data: ${JSON.stringify({ type: 'tts_error', error: '语音合成失败' })}\n\n`);
+        }
       } catch (e) {
         res.write(`data: ${JSON.stringify({ type: 'stream_error', error: '文本生成失败' })}\n\n`);
       }

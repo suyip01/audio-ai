@@ -87,12 +87,19 @@ export const config = {
 - 不泄露隐私，不诱导披露私人信息。
 - 不一次性要求用户提供大量细节，按需温和澄清。`
   },
+  tts: {
+    apiKey: process.env.TTS_API_KEY,
+    baseUrl: process.env.TTS_BASE_URL,
+    model: process.env.TTS_MODEL || 'IndexTeam/IndexTTS-2',
+    defaultVoice: process.env.TTS_DEFAULT_VOICE || 'alloy',
+    defaultFormat: process.env.TTS_DEFAULT_FORMAT || 'wav'
+  },
   
   audio: {
     maxSize: parseInt(process.env.MAX_AUDIO_SIZE) || 10 * 1024 * 1024, // 10MB
     chunkDuration: parseInt(process.env.AUDIO_CHUNK_DURATION) || 30, // seconds
     format: 'wav',
-    prompt: "仅转录你所听到的语音内容并加上断句。输出格式：仅纯文本，不要引号，不要任何额外说明，不要总结、不润色、不分析。若无法识别语音内容或仅为噪声，请输出：请靠近麦克风重新输入。你是一个纯转录角色，只返回转录文本。"
+    prompt: "仅转录你所听到的语音内容并加上断句。输出格式：仅纯文本，不要引号，不要任何额外说明，不要总结、不润色、不分析，不能回答。若无法识别语音内容或仅为噪声，请输出：请靠近麦克风重新输入。你是一个纯转录角色，只返回转录文本。"
   },
   
   streaming: {
