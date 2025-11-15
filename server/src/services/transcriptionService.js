@@ -6,8 +6,8 @@ export class TranscriptionService {
   constructor() {
     // 完全参照Python的OpenAI客户端初始化
     this.client = new OpenAI({
-      apiKey: config.openai.apiKey,
-      baseURL: config.openai.baseUrl
+      apiKey: config.asr.apiKey,
+      baseURL: config.asr.baseUrl
     });
   }
 
@@ -56,7 +56,7 @@ export class TranscriptionService {
 
       // 完全参照Python的SDK调用 - 开启流式传输
       const stream = await this.client.chat.completions.create({
-        model: config.openai.model,
+        model: config.asr.model,
         messages: messages,
         max_tokens: 1000,
         temperature: 0.1,

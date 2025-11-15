@@ -4,10 +4,12 @@ import multer from 'multer';
 import { config } from './config/config.js';
 import AudioService from './services/audioService.js';
 import TranscriptionService from './services/transcriptionService.js';
+import TextGenerationService from './services/textGenerationService.js';
 
 const app = express();
 const audioService = new AudioService();
 const transcriptionService = new TranscriptionService();
+const textGenerationService = new TextGenerationService();
 
 // 中间件
 app.use(cors());
@@ -36,7 +38,7 @@ app.get('/health', (req, res) => {
     status: 'ok', 
     timestamp: new Date().toISOString(),
     config: {
-      model: config.openai.model,
+      model: config.asr.model,
       maxAudioSize: config.audio.maxSize
     }
   });
@@ -63,6 +65,11 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
     // 使用硬编码的配置参数（完全参照Python实现）
     const prompt = config.audio.prompt;
     const chunkDuration = config.audio.chunkDuration;
+    const historyRaw = req.body?.history;
+    let history = [];
+    try {
+      if (historyRaw) history = JSON.parse(historyRaw);
+    } catch {}
 
     console.log("开始处理音频转录任务...");
     
@@ -128,6 +135,16 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
         totalChunks: audioChunks.length
       })}\n\n`);
 
+      try {
+        const aiResponse = await textGenerationService.generateResponse(history, fullTranscription);
+        res.write(`data: ${JSON.stringify({
+          type: 'chat_complete',
+          response: { content: aiResponse }
+        })}\n\n`);
+      } catch (e) {
+        res.write(`data: ${JSON.stringify({ type: 'stream_error', error: '文本生成失败' })}\n\n`);
+      }
+
       console.log("流式转录完成，总长度:", fullTranscription.length);
       
     } catch (error) {
@@ -173,7 +190,7 @@ const PORT = config.port;
 app.listen(PORT, () => {
   console.log(`🚀 AI音频转录服务器启动成功！`);
   console.log(`📡 端口: ${PORT}`);
-  console.log(`🎯 模型: ${config.openai.model}`);
+  console.log(`🎯 模型: ${config.asr.model}`);
   console.log(`📊 最大音频大小: ${config.audio.maxSize / (1024 * 1024)}MB`);
   console.log(`🔗 流式转录接口: POST http://localhost:${PORT}/api/audio/transcribe-stream`);
 });
