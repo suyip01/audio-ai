@@ -63,6 +63,7 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Cache-Control'
     });
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
     // 使用硬编码的配置参数（完全参照Python实现）
     const prompt = config.audio.prompt;
@@ -147,19 +148,29 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
         try {
           console.log('开始语音合成(TTS)...');
           res.write(`data: ${JSON.stringify({ type: 'tts_start', message: '正在生成语音...' })}\n\n`);
-          const stream = ttsService.synthesizeStream(aiResponse);
-          for await (const chunk of stream) {
-            const base64 = chunk.toString('base64');
-            res.write(`data: ${JSON.stringify({ type: 'tts_chunk', audio: { data: base64, format: config.tts.defaultFormat } })}\n\n`);
+          const stream = ttsService.synthesizeStream(aiResponse, undefined, 'webm');
+          for await (const item of stream) {
+            if (item.kind === 'webm_init') {
+              const initBuf = item.data || Buffer.alloc(0);
+              res.write(`data: ${JSON.stringify({ type: 'tts_init', audio: { data: initBuf.toString('base64'), format: item.format } })}\n\n`);
+            } else if (item.kind === 'webm_segment') {
+              const segBuf = item.data;
+              if (segBuf && segBuf.length > 0) {
+                res.write(`data: ${JSON.stringify({ type: 'tts_segment', audio: { data: segBuf.toString('base64'), format: item.format }, segmentIndex: item.segmentIndex })}\n\n`);
+              }
+            }
+            await new Promise(r => setTimeout(r, 10));
           }
-          res.write(`data: ${JSON.stringify({ type: 'tts_complete' })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'tts_complete', format: 'webm' })}\n\n`);
           console.log('语音合成流式输出完成');
         } catch (ttsErr) {
           console.error('语音合成失败:', ttsErr);
           res.write(`data: ${JSON.stringify({ type: 'tts_error', error: '语音合成失败' })}\n\n`);
         }
       } catch (e) {
-        res.write(`data: ${JSON.stringify({ type: 'stream_error', error: '文本生成失败' })}\n\n`);
+        console.error('文本生成失败:', e && e.stack ? e.stack : e);
+        const details = (e && e.message) ? e.message : '未知错误';
+        res.write(`data: ${JSON.stringify({ type: 'stream_error', error: '文本生成失败', details })}\n\n`);
       }
 
       console.log("流式转录完成，总长度:", fullTranscription.length);
@@ -180,6 +191,23 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
       error: '音频转录失败', 
       message: error.message 
     });
+  }
+});
+
+// 键盘文字输入聊天接口（不进行音频转录），返回文本结果
+app.post('/api/text/chat', async (req, res) => {
+  try {
+    const latestUserText = req.body?.message || '';
+    const history = req.body?.history || [];
+    if (!latestUserText || !latestUserText.trim()) {
+      return res.status(400).json({ error: '缺少有效的输入文本' });
+    }
+
+    const aiResponse = await textGenerationService.generateResponse(history, latestUserText);
+    return res.json({ response: aiResponse, output: aiResponse, summary: aiResponse, data: null, response_type: 'text_chat', optimization_stats: null, metadata: null });
+  } catch (error) {
+    console.error('文字聊天接口错误:', error);
+    return res.status(500).json({ error: '文字聊天失败', message: error.message });
   }
 });
 

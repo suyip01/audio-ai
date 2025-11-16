@@ -30,6 +30,12 @@ const ChatPage = () => {
   const [isComposing, setIsComposing] = useState(false);
   const [isNavExpanded, setIsNavExpanded] = useState(false);
   const isMobile = useResponsive();
+  const [viewportWidth, setViewportWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const sessionId = useSessionId(user?.id);
   const currentTranscriptionMessageIdRef = useRef(null);
   const currentBotMessageIdRef = useRef(null);
@@ -37,6 +43,8 @@ const ChatPage = () => {
   const typewriterIntervalRef = useRef(null);
   const typewriterProgressRef = useRef(0);
   const ttsStartedRef = useRef(false);
+  const ttsMediaRefs = useRef(new Map());
+  const [activeAudioUrl, setActiveAudioUrl] = useState(null);
   const getHistory = useCallback(() => {
     return messages
       .filter(m => m.type === 'user' || m.type === 'bot')
@@ -62,8 +70,26 @@ const ChatPage = () => {
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: (m.content || '') + data.content } : m));
     } else if (data.type === 'transcription_complete' && typeof data.content === 'string') {
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: data.content } : m));
+      setStreamingMessage({
+        id: Date.now() + 1,
+        type: 'bot',
+        content: '',
+        data: null,
+        timestamp: new Date(),
+        isStreaming: true
+      });
     } else if (data.type === 'error') {
-      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: data.error || '转录失败' } : m));
+      // 保持已识别文本，不覆盖用户气泡
+      const errorResponse = { id: Date.now() + 2, type: 'bot', content: data.error || '转录失败', timestamp: new Date(), isError: true };
+      setMessages(prev => [...prev, errorResponse]);
+    } else if (data.type === 'upload_aborted') {
+      const abortResponse = { id: Date.now() + 2, type: 'bot', content: '回复已停止', timestamp: new Date() };
+      setMessages(prev => [...prev, abortResponse]);
+    } else if (data.type === 'stream_error') {
+      console.error('流式处理失败', data);
+      const reason = data.details || data.error || '处理失败';
+      const errorResponse = { id: Date.now() + 2, type: 'bot', content: `错误：${reason}`, timestamp: new Date(), isError: true };
+      setMessages(prev => [...prev, errorResponse]);
     } else if (data.type === 'chat_complete') {
       const content = data.response?.content || data.content || '';
       pendingBotTextRef.current = content || '';
@@ -73,12 +99,26 @@ const ChatPage = () => {
       currentBotMessageIdRef.current = ttsMsgId;
       ttsStartedRef.current = false;
       typewriterProgressRef.current = 0;
-      const botMsg = { id: ttsMsgId, type: 'bot', content: '', timestamp: new Date(), isStreaming: true, responseType: 'tts', data: { tts: { url: null } } };
-      setMessages(prev => [...prev, botMsg]);
+      /* 不在 tts_start 时创建气泡，等待 tts_init 到来后再创建单一气泡 */
     } else if (data.type === 'tts_complete') {
       const id = currentTranscriptionMessageIdRef.current;
       if (id) {
-        setMessages(prev => prev.map(m => m.id === id ? { ...m, isStreaming: false } : m));
+        setMessages(prev => prev.map(m => {
+          if (m.id !== id) return m;
+          const format = (m.data && m.data.tts && m.data.tts.format) || data.audio?.format || 'mp3';
+          const buffer = m.data?.tts?.buffer;
+          const hasUrl = m.data?.tts?.url;
+          let url = hasUrl || null;
+          if (!url && buffer && buffer.length > 0) {
+            const mime = getAudioMimeType(format);
+            url = URL.createObjectURL(new Blob([buffer], { type: mime }));
+          }
+          return { ...m, isStreaming: false, data: { ...(m.data || {}), tts: { ...(m.data?.tts || {}), url, format } } };
+        }));
+        const ref = ttsMediaRefs.current.get(id);
+        if (ref && ref.mediaSource && ref.mediaSource.readyState === 'open') {
+          try { ref.mediaSource.endOfStream(); } catch {}
+        }
       }
       if (typewriterIntervalRef.current) {
         clearInterval(typewriterIntervalRef.current);
@@ -90,21 +130,140 @@ const ChatPage = () => {
         const id2 = currentTranscriptionMessageIdRef.current;
         setMessages(prev => prev.map(m => m.id === id2 ? { ...m, content: fullText } : m));
       }
-    } else if (data.type === 'tts_chunk') {
+    } else if (data.type === 'tts_init') {
+      console.log('tts_init received');
       const id = currentTranscriptionMessageIdRef.current;
-      const format = data.audio?.format || 'wav';
+      const base64 = data.audio?.data;
+      if (id && base64) {
+        // 若尚未创建气泡，则在此创建单一气泡
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === id);
+          if (exists) return prev;
+          const botMsg = { id, type: 'bot', content: '', timestamp: new Date(), isStreaming: true, responseType: 'tts', data: { tts: { url: null, msUrl: null } } };
+          return [...prev, botMsg];
+        });
+        const initBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        let ref = ttsMediaRefs.current.get(id);
+        if (!ref) {
+          const mediaSource = new MediaSource();
+          const msUrl = URL.createObjectURL(mediaSource);
+          ref = { mediaSource, sourceBuffer: null, queue: [], initAppended: false, initBytes: null, process: null, audioEl: null };
+          ttsMediaRefs.current.set(id, ref);
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, data: { ...(m.data || {}), tts: { ...(m.data?.tts || {}), msUrl, url: msUrl } } } : m));
+          setActiveAudioUrl(msUrl);
+          mediaSource.addEventListener('sourceopen', () => {
+            try {
+              console.log('MediaSource open', MediaSource.isTypeSupported('audio/webm;codecs=opus'));
+              mediaSource.duration = Infinity;
+              const mime = 'audio/webm;codecs=opus';
+              ref.sourceBuffer = mediaSource.addSourceBuffer(mime);
+              ref.sourceBuffer.addEventListener('updateend', () => { if (ref.process) ref.process(); });
+              ref.sourceBuffer.addEventListener('error', (e) => { console.error('SourceBuffer error', e); });
+              ref.process = () => {
+                if (!ref.sourceBuffer || ref.sourceBuffer.updating) return;
+                if (!ref.initAppended && ref.initBytes) {
+                  ref.initAppended = true;
+                  ref.sourceBuffer.appendBuffer(ref.initBytes);
+                  if (ref.audioEl) ref.audioEl.play().catch(() => {});
+                  const b = ref.sourceBuffer.buffered; const s = b.length ? b.start(0) : null; const e = b.length ? b.end(0) : null; console.log('init appended', { buffered: b.length, start: s, end: e });
+                  return;
+                }
+                if (ref.queue.length === 0) return;
+                const buf = ref.queue.shift();
+                const ranges = ref.sourceBuffer.buffered;
+                let offset = 0;
+                if (ranges && ranges.length > 0) offset = ranges.end(ranges.length - 1) + 0.001;
+                ref.sourceBuffer.timestampOffset = offset;
+                ref.sourceBuffer.appendBuffer(buf);
+                if (ref.audioEl) ref.audioEl.play().catch(() => {});
+                const b = ref.sourceBuffer.buffered; const s = b.length ? b.start(0) : null; const e = b.length ? b.end(0) : null; console.log('segment appended', { queue: ref.queue.length, offset, start: s, end: e });
+              };
+              ref.initBytes = initBytes.buffer;
+              ref.process();
+            } catch {}
+          });
+        } else {
+          ref.initBytes = initBytes.buffer;
+          if (ref.process) ref.process();
+        }
+        setStreamingMessage(null);
+        if (!ttsStartedRef.current) {
+          ttsStartedRef.current = true;
+          const fullText = pendingBotTextRef.current || '';
+          const id2 = currentTranscriptionMessageIdRef.current;
+          if (fullText && id2) {
+            if (typewriterIntervalRef.current) {
+              clearInterval(typewriterIntervalRef.current);
+            }
+            typewriterProgressRef.current = 0;
+            typewriterIntervalRef.current = setInterval(() => {
+              const text = pendingBotTextRef.current || '';
+              if (!text) {
+                clearInterval(typewriterIntervalRef.current);
+                typewriterIntervalRef.current = null;
+                return;
+              }
+              const step = Math.max(1, Math.ceil(text.length / 120));
+              typewriterProgressRef.current = Math.min(text.length, typewriterProgressRef.current + step);
+              const slice = text.slice(0, typewriterProgressRef.current);
+              setMessages(prev => prev.map(m => m.id === id2 ? { ...m, content: slice } : m));
+              if (typewriterProgressRef.current >= text.length) {
+                clearInterval(typewriterIntervalRef.current);
+                typewriterIntervalRef.current = null;
+              }
+            }, 30);
+          }
+        }
+      }
+    } else if (data.type === 'tts_segment') {
+      console.log('tts_segment received');
+      const id = currentTranscriptionMessageIdRef.current;
       const base64 = data.audio?.data;
       if (id && base64) {
         const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-        setMessages(prev => prev.map(m => {
-          if (m.id !== id) return m;
-          const existing = m.data?.tts?.buffer || new Uint8Array(0);
-          const merged = new Uint8Array(existing.length + bytes.length);
-          merged.set(existing);
-          merged.set(bytes, existing.length);
-          const url = merged.length >= 256 * 1024 ? URL.createObjectURL(new Blob([merged], { type: `audio/${format}` })) : m.data?.tts?.url || null;
-          return { ...m, data: { ...(m.data || {}), tts: { buffer: merged, url } } };
-        }));
+        let ref = ttsMediaRefs.current.get(id);
+        if (!ref) {
+          const mediaSource = new MediaSource();
+          const msUrl = URL.createObjectURL(mediaSource);
+          ref = { mediaSource, sourceBuffer: null, queue: [], initAppended: false, initBytes: null, process: null, audioEl: null };
+          ttsMediaRefs.current.set(id, ref);
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, data: { ...(m.data || {}), tts: { ...(m.data?.tts || {}), msUrl, url: msUrl } } } : m));
+          setActiveAudioUrl(msUrl);
+          mediaSource.addEventListener('sourceopen', () => {
+            try {
+              console.log('MediaSource open (segment)', MediaSource.isTypeSupported('audio/webm;codecs=opus'));
+              mediaSource.duration = Infinity;
+              const mime = 'audio/webm;codecs=opus';
+              ref.sourceBuffer = mediaSource.addSourceBuffer(mime);
+              ref.sourceBuffer.addEventListener('updateend', () => { if (ref.process) ref.process(); });
+              ref.sourceBuffer.addEventListener('error', (e) => { console.error('SourceBuffer error', e); });
+              ref.process = () => {
+                if (!ref.sourceBuffer || ref.sourceBuffer.updating) return;
+                if (!ref.initAppended) {
+                  if (ref.initBytes) {
+                    ref.initAppended = true;
+                    ref.sourceBuffer.appendBuffer(ref.initBytes);
+                    if (ref.audioEl) ref.audioEl.play().catch(() => {});
+                    const b = ref.sourceBuffer.buffered; const s = b.length ? b.start(0) : null; const e = b.length ? b.end(0) : null; console.log('init appended (segment path)', { buffered: b.length, start: s, end: e });
+                  }
+                  return;
+                }
+                if (ref.queue.length === 0) return;
+                const buf = ref.queue.shift();
+                const ranges = ref.sourceBuffer.buffered;
+                let offset = 0;
+                if (ranges && ranges.length > 0) offset = ranges.end(ranges.length - 1) + 0.001;
+                ref.sourceBuffer.timestampOffset = offset;
+                ref.sourceBuffer.appendBuffer(buf);
+                if (ref.audioEl) ref.audioEl.play().catch(() => {});
+                const b = ref.sourceBuffer.buffered; const s = b.length ? b.start(0) : null; const e = b.length ? b.end(0) : null; console.log('segment appended (segment path)', { queue: ref.queue.length, offset, start: s, end: e });
+              };
+              ref.process();
+            } catch {}
+          });
+        }
+        ref.queue.push(bytes.buffer);
+        if (ref.process) ref.process();
         if (!ttsStartedRef.current) {
           ttsStartedRef.current = true;
           const fullText = pendingBotTextRef.current || '';
@@ -149,9 +308,10 @@ const ChatPage = () => {
     }
   }, []);
 
-  const { isRecording, setIsRecording, isActiveRecording, setIsActiveRecording, audioLevel, waveformData, startAudioRecording, stopAudioRecording } = useAudioRecorder({ onBeforeUpload, getHistory, onStreamEvent, url: 'http://localhost:3001/api/audio/transcribe-stream' });
+  const { isRecording, setIsRecording, isActiveRecording, setIsActiveRecording, audioLevel, waveformData, startAudioRecording, stopAudioRecording, abortUpload } = useAudioRecorder({ onBeforeUpload, getHistory, onStreamEvent, url: '/api/audio/transcribe-stream' });
   
   const { currentPage, itemsPerPage, resetPagination, getPaginatedData, getTotalPages, getCurrentPageForData, setCurrentPageForData } = usePagination(10);
+  const [isStoppingReply, setIsStoppingReply] = useState(false);
   // SSE streaming states
   const streamingEnabled = true; // 固定启用流式响应
   const messagesEndRef = useRef(null);
@@ -166,13 +326,14 @@ const ChatPage = () => {
       // Check if the active element is the textarea - if so, don't trigger recording
       const activeElement = document.activeElement;
       const isTextareaFocused = activeElement && activeElement.tagName === 'TEXTAREA';
+      const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
       
-      if (e.code === 'Space' && !isRecording && !isTyping && !isTextareaFocused) {
+      if (e.code === 'Space' && !isRecording && !isTyping && !isTextareaFocused && !aiReplying) {
         e.preventDefault();
         setIsRecording(true);
         setIsInputExpanded(false);
         setIsFocused(false);
-      } else if (e.code === 'Space' && isRecording && !isActiveRecording) {
+      } else if (e.code === 'Space' && isRecording && !isActiveRecording && !aiReplying) {
         e.preventDefault();
         setIsActiveRecording(true);
         startAudioRecording();
@@ -181,7 +342,8 @@ const ChatPage = () => {
     };
 
     const handleKeyUp = (e) => {
-      if (e.code === 'Space' && isActiveRecording) {
+      const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
+      if (e.code === 'Space' && isActiveRecording && !aiReplying) {
         e.preventDefault();
         console.log('Space key: Recording stopped - sending message');
         stopAudioRecording();
@@ -199,7 +361,7 @@ const ChatPage = () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isRecording, isActiveRecording, isTyping]);
+  }, [isRecording, isActiveRecording, isTyping, streamingMessage, isStoppingReply]);
 
 
   
@@ -213,6 +375,19 @@ const ChatPage = () => {
   }, [messages]);
 
   const { connectSSE, disconnectSSE, handleStopRequest } = useSSEChat({ setMessages });
+  const stopAll = useCallback(() => {
+    setIsStoppingReply(true);
+    const aiStreaming = streamingMessage && streamingMessage.isStreaming;
+    if (httpAbortControllerRef.current) {
+      try { httpAbortControllerRef.current.abort(); } catch {}
+    } else if (aiStreaming) {
+      abortUpload();
+      setStreamingMessage(null);
+    } else {
+      handleStopRequest();
+    }
+    setTimeout(() => setIsStoppingReply(false), 400);
+  }, [streamingMessage, abortUpload, handleStopRequest]);
   
   // Clean up resources when component unmounts
   useEffect(() => {
@@ -286,7 +461,7 @@ const ChatPage = () => {
     httpAbortControllerRef.current = new AbortController();
 
     try {
-      const response = await fetch('/api/ai/chat-stream', {
+      const response = await fetch('/api/text/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -295,6 +470,7 @@ const ChatPage = () => {
           message: userMessageContent,
           sessionId: sessionId,
           userId: user?.id || null,
+          history: getHistory(),
           streaming: false
         }),
         signal: httpAbortControllerRef.current.signal
@@ -378,12 +554,25 @@ const ChatPage = () => {
     });
   };
 
+  
+
 
 
   const quickActions = [];
 
   return (
     <div className="min-h-screen w-full relative overflow-hidden">
+      {activeAudioUrl && (
+        <audio
+          autoPlay
+          playsInline
+          preload="auto"
+          src={activeAudioUrl}
+          onLoadedMetadata={(e) => { try { console.log('global audio loaded', e.currentTarget.readyState); e.currentTarget.play(); } catch (err) { console.error('global audio play error', err); } }}
+          onError={(e) => { console.error('global audio element error', e.currentTarget.error); }}
+          style={{ display: 'none' }}
+        />
+      )}
       {/* Fixed Background decoration */}
       <div className="fixed inset-0 z-0">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-orange-100 to-orange-50"></div>
@@ -401,7 +590,7 @@ const ChatPage = () => {
         <div className={`h-full flex flex-col transition-all duration-[400ms] max-md:w-full max-md:p-0 max-md:ml-0 ${
           isMobile 
             ? 'w-full p-4 ml-0' 
-            : 'w-11/12 ml-20 mr-6 p-6'
+            : (viewportWidth > 1440 ? 'w-3/5 ml-20 mr-6 p-6' : 'w-4/5 ml-20 mr-6 p-6')
         }`}>
           {/* Header */}
           <div className="text-center mb-6">
@@ -513,8 +702,30 @@ const ChatPage = () => {
                               </div>
                             )}
                             {message.data.tts?.url && (
-                              <audio autoPlay playsInline preload="auto" src={message.data.tts.url} style={{ display: 'none' }} />
+                              <audio
+                                autoPlay
+                                playsInline
+                                preload="auto"
+                                src={message.data.tts.url}
+                                key={message.data.tts.url}
+                                onLoadedMetadata={(e) => { try { console.log('audio loaded', e.currentTarget.readyState); e.currentTarget.play(); } catch (err) { console.error('audio play error', err); } }}
+                                onError={(e) => { console.error('audio element error', e.currentTarget.error); }}
+                                style={{ display: 'none' }}
+                              />
                             )}
+                            {message.data.tts?.msUrl && (
+                              <audio
+                                autoPlay
+                                playsInline
+                                preload="auto"
+                                src={message.data.tts.msUrl}
+                                ref={(el) => { const r = ttsMediaRefs.current.get(message.id); if (r) r.audioEl = el; }}
+                                onLoadedMetadata={(e) => { try { e.currentTarget.play(); } catch (err) { console.error('audio play error (msUrl)', err); } }}
+                                onError={(e) => { console.error('audio element error (msUrl)', e.currentTarget.error); }}
+                                style={{ display: 'none' }}
+                              />
+                            )}
+                            
                         </div>
                       )}
                     </div>
@@ -535,19 +746,15 @@ const ChatPage = () => {
                   </div>
                   <div className="max-w-[90%] sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl text-left">
                     <div className="inline-block p-4 rounded-2xl shadow-sm bg-white/80 text-gray-800 border border-gray-200/50 max-w-full">
-                      {/* Simple loading indicator with three dots */}
-                      <div className="flex items-center mb-2">
-                        <div className="flex space-x-1 mr-2">
+                      {/* Centered loading indicator */}
+                      <div className="flex items-center justify-center py-1">
+                        <div className="flex items-center space-x-2 h-4">
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce"></div>
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                         </div>
-                        <span className="text-sm font-medium text-emerald-600">AI 正在处理中...</span>
                       </div>
-                      
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                        {streamingMessage.content || '正在分析中...'}
-                      </p>
+                    
                       
                       {/* Display streaming data if available */}
                       {streamingMessage.data && (
@@ -615,12 +822,16 @@ const ChatPage = () => {
                       }`}
                       style={{transform: 'translateY(-6px)'}}
                       onMouseDown={(e) => {
+                        const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
+                        if (aiReplying) { e.preventDefault(); return; }
                         e.preventDefault();
                         setIsActiveRecording(true);
                         startAudioRecording();
                         console.log('Recording started by long press');
                       }}
                       onMouseUp={(e) => {
+                        const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
+                        if (aiReplying) { e.preventDefault(); return; }
                         e.preventDefault();
                         if (isActiveRecording) {
                           console.log('Recording stopped - sending message');
@@ -631,6 +842,8 @@ const ChatPage = () => {
                         }
                       }}
                       onMouseLeave={(e) => {
+                        const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
+                        if (aiReplying) { return; }
                         if (isActiveRecording) {
                           console.log('Recording stopped - mouse left area');
                           stopAudioRecording();
@@ -664,16 +877,18 @@ const ChatPage = () => {
                             })}
                           </div>
                         ) : (
-                          <span className="font-medium text-base text-gray-700">
-                            按住此处或空格说话
-                          </span>
+                          (streamingMessage && streamingMessage.isStreaming) || isStoppingReply ? (
+                            <span className="font-medium text-base text-transparent">.</span>
+                          ) : (
+                            <span className="font-medium text-base text-gray-700">按住此处或空格说话</span>
+                          )
                         )}
                       </div>
                     </div>
                   ) : (
                     <textarea
                       ref={inputRef}
-                      value={inputMessage}
+                      value={(isStoppingReply || (streamingMessage && streamingMessage.isStreaming)) ? '' : inputMessage}
                       onChange={(e) => setInputMessage(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
@@ -710,7 +925,7 @@ const ChatPage = () => {
                         scrollbarGutter: 'stable',
                         overflowY: isInputExpanded ? 'auto' : 'hidden'
                       }}
-                      disabled={isTyping}
+                      disabled={isTyping || isStoppingReply || (streamingMessage && streamingMessage.isStreaming)}
                       rows={isInputExpanded ? 4 : 1}
                     />
                   )}
@@ -718,21 +933,37 @@ const ChatPage = () => {
                     isRecording ? 'top-1/2 transform -translate-y-1/2' : 'bottom-2.5'
                   }`} style={isRecording ? {transform: 'translateY(calc(-50% - 6px))'} : {}}>
                     {isRecording ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsRecording(false);
-                          // 可选：切换回文本模式时保持合理的输入框状态
-                          if (!inputMessage.trim()) {
-                            setIsInputExpanded(false);
-                          }
-                        }}
-                        className={`w-10 h-10 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 flex items-center justify-center ${
-                          isActiveRecording ? 'opacity-0 pointer-events-none' : 'opacity-100'
-                        }`}
-                      >
-                        <i className="fas fa-keyboard text-sm"></i>
-                      </button>
+                      (() => {
+                        const aiReplying = !!(streamingMessage && streamingMessage.isStreaming);
+                        if (aiReplying) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); stopAll(); }}
+                              className={`relative w-10 h-10 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center bg-red-500 hover:bg-red-600`}
+                            >
+                              <div className="pointer-events-none absolute inset-0 border-2 border-red-200 rounded-full animate-spin border-t-white"></div>
+                              <i className="fas fa-stop text-white text-xs relative z-10"></i>
+                            </button>
+                          );
+                        }
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsRecording(false);
+                              if (!inputMessage.trim()) {
+                                setIsInputExpanded(false);
+                              }
+                            }}
+                            className={`w-10 h-10 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 flex items-center justify-center ${
+                              isActiveRecording ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                            }`}
+                          >
+                            <i className="fas fa-keyboard text-sm"></i>
+                          </button>
+                        );
+                      })()
                     ) : (
                       <>
                         <button
@@ -758,8 +989,8 @@ const ChatPage = () => {
                         <button
                           type={isTyping ? "button" : "submit"}
                           disabled={!isTyping && !inputMessage.trim()}
-                          onClick={isTyping ? handleStopRequest : undefined}
-                          className={`w-10 h-10 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
+                          onClick={isTyping ? stopAll : undefined}
+                          className={`relative w-10 h-10 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
                             isTyping 
                               ? 'bg-red-500 hover:bg-red-600' 
                               : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700'
@@ -767,7 +998,7 @@ const ChatPage = () => {
                         >
                         {isTyping ? (
                           <>
-                            <div className="absolute inset-0 border-2 border-red-200 rounded-full animate-spin border-t-white"></div>
+                            <div className="pointer-events-none absolute inset-0 border-2 border-red-200 rounded-full animate-spin border-t-white"></div>
                             <i className="fas fa-stop text-white text-xs relative z-10"></i>
                           </>
                         ) : (

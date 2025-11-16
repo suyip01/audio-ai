@@ -1,4 +1,4 @@
-export async function uploadAudioSSE({ wavBlob, history, url = 'http://localhost:3001/api/audio/transcribe-stream', onEvent }) {
+export async function uploadAudioSSE({ wavBlob, history, url = 'http://localhost:3001/api/audio/transcribe-stream', onEvent, signal }) {
   const formData = new FormData();
   formData.append('audio', wavBlob, 'recording.wav');
   if (history) formData.append('history', JSON.stringify(history));
@@ -8,7 +8,8 @@ export async function uploadAudioSSE({ wavBlob, history, url = 'http://localhost
       'Accept': 'text/event-stream',
       'Cache-Control': 'no-cache'
     },
-    body: formData
+    body: formData,
+    signal
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const reader = response.body.getReader();

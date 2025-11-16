@@ -15,6 +15,7 @@ export default function useAudioRecorder({ onBeforeUpload, getHistory, onStreamE
   const recordedSamplesRef = useRef([]);
   const recordedLengthRef = useRef(0);
   const sampleRateRef = useRef(44100);
+  const uploadAbortControllerRef = useRef(null);
 
   const analyzeAudio = () => {
     if (!analyserRef.current || !dataArrayRef.current) return;
@@ -145,12 +146,27 @@ export default function useAudioRecorder({ onBeforeUpload, getHistory, onStreamE
       try {
         if (onBeforeUpload) messageId = onBeforeUpload(wavBlob);
         const history = getHistory ? getHistory() : [];
-        await uploadAudioSSE({ wavBlob, history, url, onEvent: (data) => {
+        uploadAbortControllerRef.current = new AbortController();
+        await uploadAudioSSE({ wavBlob, history, url, signal: uploadAbortControllerRef.current.signal, onEvent: (data) => {
           if (onStreamEvent) onStreamEvent(data, messageId);
         }});
       } catch (e) {
-        if (onStreamEvent) onStreamEvent({ type: 'error', error: e.message }, messageId);
+        if (e && (e.name === 'AbortError' || /aborted/i.test(e.message || ''))) {
+          if (onStreamEvent) onStreamEvent({ type: 'upload_aborted' }, messageId);
+        } else {
+          if (onStreamEvent) onStreamEvent({ type: 'error', error: e.message }, messageId);
+        }
       }
+      finally {
+        uploadAbortControllerRef.current = null;
+      }
+    }
+  };
+
+  const abortUpload = () => {
+    if (uploadAbortControllerRef.current) {
+      try { uploadAbortControllerRef.current.abort(); } catch {}
+      uploadAbortControllerRef.current = null;
     }
   };
 
@@ -163,5 +179,6 @@ export default function useAudioRecorder({ onBeforeUpload, getHistory, onStreamE
     waveformData,
     startAudioRecording,
     stopAudioRecording,
+    abortUpload,
   };
 }

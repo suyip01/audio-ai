@@ -31,6 +31,7 @@ export class TextGenerationService {
   async generateResponse(history, latestUserText) {
     await this.loadSystemPrompt();
     const messages = this.buildMessages(history, latestUserText);
+    console.log('LLM prompt messages:', messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : String(m.content) })));
     const model = config.llm.model || config.asr.model;
     const resp = await this.client.chat.completions.create({
       model,
