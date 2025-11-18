@@ -98,19 +98,22 @@ export default function useSSEChat({ setMessages }) {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                handleSSEMessage(data);
-              } catch {}
-            }
+          buffer += chunk;
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
+          for (const evt of events) {
+            const line = evt.split('\n').find(l => l.startsWith('data: '));
+            if (!line) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              handleSSEMessage(data);
+            } catch {}
           }
         }
       } finally {

@@ -93,7 +93,7 @@ export const config = {
     apiKey: process.env.TTS_API_KEY,
     baseUrl: process.env.TTS_BASE_URL,
     model: process.env.TTS_MODEL || 'IndexTeam/IndexTTS-2',
-    defaultVoice: process.env.TTS_DEFAULT_VOICE || 'alloy',
+    defaultVoice: process.env.TTS_DEFAULT_VOICE || 'crystal_liu',
     defaultFormat: process.env.TTS_DEFAULT_FORMAT || 'wav'
   },
   

@@ -39,13 +39,23 @@ export class TTSService {
     const maxLen = config.tts?.maxSegmentLength || 40;
     const segments = splitTextIntoSentences(text, maxLen);
     console.log(`TTS stream start: segments=${segments.length}`);
+// 生成时间戳目录
+//    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+//    const baseDir = path.join(process.cwd(), 'server', 'output', 'tts', ts);
+//    const wavDir = path.join(baseDir, 'segment_wav');
+//    const webmDir = path.join(baseDir, 'segment_webm');
+//    try { await fs.mkdir(wavDir, { recursive: true }); await fs.mkdir(webmDir, { recursive: true }); console.log(`TTS save dir: ${baseDir}`); } catch {}
     let idx = 0;
     for (const seg of segments) {
       if (!seg || !seg.trim()) continue;
       console.log(`TTS segment ${idx + 1}/${segments.length}: text_len=${seg.length}`);
       const wavBuf = await this.synthesize(seg, voice, 'wav');
       if (!wavBuf) continue;
+// 保存WAV文件
+//      try { await fs.writeFile(path.join(wavDir, `seg_${idx + 1}.wav`), wavBuf); } catch {}
       const webmBuf = await transcodeWavToWebm(wavBuf);
+// 保存WebM文件
+//      try { await fs.writeFile(path.join(webmDir, `seg_${idx + 1}.webm`), webmBuf); } catch {}
       const { init, media } = extractWebMInitAndMedia(webmBuf);
       if (idx === 0) {
         yield { kind: 'webm_init', data: init, format: 'webm', segmentIndex: idx };
@@ -89,8 +99,27 @@ async function transcodeWavToWebm(wavBuffer) {
   const inputPath = path.join(tmpDir, 'input.wav');
   const outputPath = path.join(tmpDir, 'output.webm');
   await fs.writeFile(inputPath, wavBuffer);
+  const dv = new DataView(wavBuffer.buffer, wavBuffer.byteOffset, wavBuffer.byteLength);
+  let off = 12; let sr = 0; let ch = 1; let bps = 16; let dataLen = 0;
+  while (off + 8 <= wavBuffer.length) {
+    const id = String.fromCharCode(dv.getUint8(off), dv.getUint8(off+1), dv.getUint8(off+2), dv.getUint8(off+3));
+    const sz = dv.getUint32(off + 4, true);
+    if (id === 'fmt ') {
+      ch = dv.getUint16(off + 10, true);
+      sr = dv.getUint32(off + 12, true);
+      bps = dv.getUint16(off + 22, true);
+    } else if (id === 'data') {
+      dataLen = sz;
+    }
+    off += 8 + sz;
+  }
+  const dur = sr && bps && dataLen ? (dataLen / (sr * ch * (bps / 8))) : 0;
+  const fadeIn = 0.02;
+  const fadeOut = 0.25;
+  const st = dur > (fadeOut + 0.01) ? Math.max(0, dur - fadeOut) : 0;
   await new Promise((resolve, reject) => {
     ffmpeg(inputPath)
+      .audioFilters([`afade=t=in:d=${fadeIn}`, st > 0 ? `afade=t=out:st=${st}:d=${fadeOut}` : null].filter(Boolean))
       .outputOptions(['-c:a libopus', '-b:a 64k', '-ar 48000', '-ac 1'])
       .format('webm')
       .save(outputPath)

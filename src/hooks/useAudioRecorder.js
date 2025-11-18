@@ -163,6 +163,29 @@ export default function useAudioRecorder({ onBeforeUpload, getHistory, onStreamE
     }
   };
 
+  const cancelAudioRecording = () => {
+    if (microphoneRef.current) {
+      microphoneRef.current.getTracks().forEach(track => track.stop());
+      microphoneRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    if (scriptProcessorRef.current) {
+      try { scriptProcessorRef.current.disconnect(); } catch {}
+      scriptProcessorRef.current = null;
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    setWaveformData(new Array(15).fill(0.15));
+    setAudioLevel(0);
+    recordedSamplesRef.current = [];
+    recordedLengthRef.current = 0;
+  };
+
   const abortUpload = () => {
     if (uploadAbortControllerRef.current) {
       try { uploadAbortControllerRef.current.abort(); } catch {}
@@ -179,6 +202,7 @@ export default function useAudioRecorder({ onBeforeUpload, getHistory, onStreamE
     waveformData,
     startAudioRecording,
     stopAudioRecording,
+    cancelAudioRecording,
     abortUpload,
   };
 }

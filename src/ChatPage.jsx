@@ -45,6 +45,9 @@ const ChatPage = () => {
   const ttsStartedRef = useRef(false);
   const ttsMediaRefs = useRef(new Map());
   const [activeAudioUrl, setActiveAudioUrl] = useState(null);
+  const touchStartYRef = useRef(null);
+  const touchCancelRef = useRef(false);
+  const [isTouchCancel, setIsTouchCancel] = useState(false);
   const getHistory = useCallback(() => {
     return messages
       .filter(m => m.type === 'user' || m.type === 'bot')
@@ -308,7 +311,7 @@ const ChatPage = () => {
     }
   }, []);
 
-  const { isRecording, setIsRecording, isActiveRecording, setIsActiveRecording, audioLevel, waveformData, startAudioRecording, stopAudioRecording, abortUpload } = useAudioRecorder({ onBeforeUpload, getHistory, onStreamEvent, url: '/api/audio/transcribe-stream' });
+  const { isRecording, setIsRecording, isActiveRecording, setIsActiveRecording, audioLevel, waveformData, startAudioRecording, stopAudioRecording, cancelAudioRecording, abortUpload } = useAudioRecorder({ onBeforeUpload, getHistory, onStreamEvent, url: '/api/audio/transcribe-stream' });
   
   const { currentPage, itemsPerPage, resetPagination, getPaginatedData, getTotalPages, getCurrentPageForData, setCurrentPageForData } = usePagination(10);
   const [isStoppingReply, setIsStoppingReply] = useState(false);
@@ -562,17 +565,7 @@ const ChatPage = () => {
 
   return (
     <div className="min-h-screen w-full relative overflow-hidden">
-      {activeAudioUrl && (
-        <audio
-          autoPlay
-          playsInline
-          preload="auto"
-          src={activeAudioUrl}
-          onLoadedMetadata={(e) => { try { console.log('global audio loaded', e.currentTarget.readyState); e.currentTarget.play(); } catch (err) { console.error('global audio play error', err); } }}
-          onError={(e) => { console.error('global audio element error', e.currentTarget.error); }}
-          style={{ display: 'none' }}
-        />
-      )}
+      {false}
       {/* Fixed Background decoration */}
       <div className="fixed inset-0 z-0">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-orange-100 to-orange-50"></div>
@@ -701,27 +694,15 @@ const ChatPage = () => {
                                 {renderDataTable(message.data.conversations, 'conversations', message.id)}
                               </div>
                             )}
-                            {message.data.tts?.url && (
+                            {message.data.tts && (message.data.tts.msUrl || message.data.tts.url) && (
                               <audio
                                 autoPlay
                                 playsInline
-                                preload="auto"
-                                src={message.data.tts.url}
-                                key={message.data.tts.url}
-                                onLoadedMetadata={(e) => { try { console.log('audio loaded', e.currentTarget.readyState); e.currentTarget.play(); } catch (err) { console.error('audio play error', err); } }}
+                                preload="metadata"
+                                src={message.data.tts.msUrl || message.data.tts.url}
+                                ref={message.data.tts.msUrl ? (el) => { const r = ttsMediaRefs.current.get(message.id); if (r) r.audioEl = el; } : undefined}
+                                onLoadedMetadata={(e) => { try { e.currentTarget.play(); } catch (err) { console.error('audio play error', err); } }}
                                 onError={(e) => { console.error('audio element error', e.currentTarget.error); }}
-                                style={{ display: 'none' }}
-                              />
-                            )}
-                            {message.data.tts?.msUrl && (
-                              <audio
-                                autoPlay
-                                playsInline
-                                preload="auto"
-                                src={message.data.tts.msUrl}
-                                ref={(el) => { const r = ttsMediaRefs.current.get(message.id); if (r) r.audioEl = el; }}
-                                onLoadedMetadata={(e) => { try { e.currentTarget.play(); } catch (err) { console.error('audio play error (msUrl)', err); } }}
-                                onError={(e) => { console.error('audio element error (msUrl)', e.currentTarget.error); }}
                                 style={{ display: 'none' }}
                               />
                             )}
@@ -817,10 +798,10 @@ const ChatPage = () => {
                     <div 
                       className={`w-full rounded-3xl text-gray-900 outline-none transition-all duration-300 shadow-lg backdrop-blur-lg flex items-center justify-center py-3 h-[48px] cursor-pointer select-none border ${
                         isActiveRecording 
-                          ? 'bg-white border-emerald-400 border-2 shadow-emerald-200/50 shadow-lg' 
+                          ? (isTouchCancel ? 'bg-white border-red-500 border-2 shadow-red-200/50 shadow-lg' : 'bg-white border-emerald-400 border-2 shadow-emerald-200/50 shadow-lg') 
                           : 'bg-white/90 hover:bg-white/95 border-emerald-200/60'
                       }`}
-                      style={{transform: 'translateY(-6px)'}}
+                      style={{transform: 'translateY(-6px)', touchAction: 'none'}}
                       onMouseDown={(e) => {
                         const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
                         if (aiReplying) { e.preventDefault(); return; }
@@ -850,6 +831,57 @@ const ChatPage = () => {
                           setIsActiveRecording(false);
                           // Stay in recording mode, only stop active recording
                           // setIsRecording(false); // Removed: stay in recording mode
+                        }
+                      }}
+                      onTouchStart={(e) => {
+                        const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
+                        if (aiReplying) { e.preventDefault(); return; }
+                        const t = e.touches && e.touches[0];
+                        if (!t) return;
+                        e.preventDefault();
+                        touchStartYRef.current = t.clientY;
+                        touchCancelRef.current = false;
+                        setIsTouchCancel(false);
+                        setIsActiveRecording(true);
+                        startAudioRecording();
+                      }}
+                      onTouchMove={(e) => {
+                        const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
+                        if (aiReplying) { return; }
+                        const t = e.touches && e.touches[0];
+                        if (!t) return;
+                        const dy = (touchStartYRef.current || 0) - t.clientY;
+                        const cancel = dy > 30;
+                        if (cancel !== touchCancelRef.current) {
+                          touchCancelRef.current = cancel;
+                          setIsTouchCancel(cancel);
+                        }
+                        if (cancel) e.preventDefault();
+                      }}
+                      onTouchEnd={(e) => {
+                        const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
+                        if (aiReplying) { e.preventDefault(); return; }
+                        e.preventDefault();
+                        if (isActiveRecording) {
+                          if (touchCancelRef.current) {
+                            cancelAudioRecording();
+                          } else {
+                            stopAudioRecording();
+                          }
+                          setIsActiveRecording(false);
+                          setIsTouchCancel(false);
+                          touchCancelRef.current = false;
+                          touchStartYRef.current = null;
+                        }
+                      }}
+                      onTouchCancel={(e) => {
+                        e.preventDefault();
+                        if (isActiveRecording) {
+                          cancelAudioRecording();
+                          setIsActiveRecording(false);
+                          setIsTouchCancel(false);
+                          touchCancelRef.current = false;
+                          touchStartYRef.current = null;
                         }
                       }}
                     >

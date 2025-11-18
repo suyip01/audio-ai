@@ -14,19 +14,23 @@ export async function uploadAudioSSE({ wavBlob, history, url = 'http://localhost
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  let buffer = '';
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (onEvent) onEvent(data);
-          } catch {}
-        }
+      buffer += chunk;
+      const events = buffer.split('\n\n');
+      // 保留最后可能不完整的事件
+      buffer = events.pop() || '';
+      for (const evt of events) {
+        const line = evt.split('\n').find(l => l.startsWith('data: '));
+        if (!line) continue;
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (onEvent) onEvent(data);
+        } catch {}
       }
     }
   } finally {
