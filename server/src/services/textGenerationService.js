@@ -29,17 +29,18 @@ export class TextGenerationService {
     return messages;
   }
 
-  async generateResponse(history, latestUserText, systemPromptOverride) {
+  async generateResponse(history, latestUserText, systemPromptOverride, modelOverride) {
     await this.loadSystemPrompt();
     const messages = this.buildMessages(history, latestUserText, systemPromptOverride);
     console.log('LLM prompt messages:', messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : String(m.content) })));
-    const model = config.llm.model || config.asr.model;
+    const model = modelOverride || config.llm.model || config.asr.model;
+    console.log('LLM model params:', { model, temperature: 0.2, max_tokens: 20000 });
     const resp = await this.client.chat.completions.create({
       model,
       messages,
-      stream: false,
+//      stream: false,
       temperature: 0.2,
-      max_tokens: 800
+//      max_tokens: 200000
     });
     return resp.choices?.[0]?.message?.content || '';
   }

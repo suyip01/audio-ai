@@ -10,7 +10,7 @@ import useSSEChat from './hooks/useSSEChat.js';
 
 const ChatPage = () => {
   const { user, isAuthenticated } = useAuth();
-  
+
 
   const [messages, setMessages] = useState([
     {
@@ -120,7 +120,7 @@ const ChatPage = () => {
         }));
         const ref = ttsMediaRefs.current.get(id);
         if (ref && ref.mediaSource && ref.mediaSource.readyState === 'open') {
-          try { ref.mediaSource.endOfStream(); } catch {}
+          try { ref.mediaSource.endOfStream(); } catch { }
         }
       }
       if (typewriterIntervalRef.current) {
@@ -167,7 +167,7 @@ const ChatPage = () => {
                 if (!ref.initAppended && ref.initBytes) {
                   ref.initAppended = true;
                   ref.sourceBuffer.appendBuffer(ref.initBytes);
-                  if (ref.audioEl) ref.audioEl.play().catch(() => {});
+                  if (ref.audioEl) ref.audioEl.play().catch(() => { });
                   const b = ref.sourceBuffer.buffered; const s = b.length ? b.start(0) : null; const e = b.length ? b.end(0) : null; console.log('init appended', { buffered: b.length, start: s, end: e });
                   return;
                 }
@@ -178,12 +178,12 @@ const ChatPage = () => {
                 if (ranges && ranges.length > 0) offset = ranges.end(ranges.length - 1) + 0.001;
                 ref.sourceBuffer.timestampOffset = offset;
                 ref.sourceBuffer.appendBuffer(buf);
-                if (ref.audioEl) ref.audioEl.play().catch(() => {});
+                if (ref.audioEl) ref.audioEl.play().catch(() => { });
                 const b = ref.sourceBuffer.buffered; const s = b.length ? b.start(0) : null; const e = b.length ? b.end(0) : null; console.log('segment appended', { queue: ref.queue.length, offset, start: s, end: e });
               };
               ref.initBytes = initBytes.buffer;
               ref.process();
-            } catch {}
+            } catch { }
           });
         } else {
           ref.initBytes = initBytes.buffer;
@@ -246,7 +246,7 @@ const ChatPage = () => {
                   if (ref.initBytes) {
                     ref.initAppended = true;
                     ref.sourceBuffer.appendBuffer(ref.initBytes);
-                    if (ref.audioEl) ref.audioEl.play().catch(() => {});
+                    if (ref.audioEl) ref.audioEl.play().catch(() => { });
                     const b = ref.sourceBuffer.buffered; const s = b.length ? b.start(0) : null; const e = b.length ? b.end(0) : null; console.log('init appended (segment path)', { buffered: b.length, start: s, end: e });
                   }
                   return;
@@ -258,11 +258,11 @@ const ChatPage = () => {
                 if (ranges && ranges.length > 0) offset = ranges.end(ranges.length - 1) + 0.001;
                 ref.sourceBuffer.timestampOffset = offset;
                 ref.sourceBuffer.appendBuffer(buf);
-                if (ref.audioEl) ref.audioEl.play().catch(() => {});
+                if (ref.audioEl) ref.audioEl.play().catch(() => { });
                 const b = ref.sourceBuffer.buffered; const s = b.length ? b.start(0) : null; const e = b.length ? b.end(0) : null; console.log('segment appended (segment path)', { queue: ref.queue.length, offset, start: s, end: e });
               };
               ref.process();
-            } catch {}
+            } catch { }
           });
         }
         ref.queue.push(bytes.buffer);
@@ -312,7 +312,7 @@ const ChatPage = () => {
   }, []);
 
   const { isRecording, setIsRecording, isActiveRecording, setIsActiveRecording, audioLevel, waveformData, startAudioRecording, stopAudioRecording, cancelAudioRecording, abortUpload } = useAudioRecorder({ onBeforeUpload, getHistory, onStreamEvent, url: '/api/audio/transcribe-stream' });
-  
+
   const { currentPage, itemsPerPage, resetPagination, getPaginatedData, getTotalPages, getCurrentPageForData, setCurrentPageForData } = usePagination(10);
   const [isStoppingReply, setIsStoppingReply] = useState(false);
   // SSE streaming states
@@ -321,7 +321,7 @@ const ChatPage = () => {
   const inputRef = useRef(null);
   const httpAbortControllerRef = useRef(null);
 
-  
+
 
   // Handle space key for recording
   useEffect(() => {
@@ -330,7 +330,7 @@ const ChatPage = () => {
       const activeElement = document.activeElement;
       const isTextareaFocused = activeElement && activeElement.tagName === 'TEXTAREA';
       const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
-      
+
       if (e.code === 'Space' && !isRecording && !isTyping && !isTextareaFocused && !aiReplying) {
         e.preventDefault();
         setIsRecording(true);
@@ -367,11 +367,11 @@ const ChatPage = () => {
   }, [isRecording, isActiveRecording, isTyping, streamingMessage, isStoppingReply]);
 
 
-  
 
-  
 
-  
+
+
+
 
   useEffect(() => {
     scrollToBottom();
@@ -382,7 +382,7 @@ const ChatPage = () => {
     setIsStoppingReply(true);
     const aiStreaming = streamingMessage && streamingMessage.isStreaming;
     if (httpAbortControllerRef.current) {
-      try { httpAbortControllerRef.current.abort(); } catch {}
+      try { httpAbortControllerRef.current.abort(); } catch { }
     } else if (aiStreaming) {
       abortUpload();
       setStreamingMessage(null);
@@ -391,7 +391,7 @@ const ChatPage = () => {
     }
     setTimeout(() => setIsStoppingReply(false), 400);
   }, [streamingMessage, abortUpload, handleStopRequest]);
-  
+
   // Clean up resources when component unmounts
   useEffect(() => {
     return () => {
@@ -400,13 +400,13 @@ const ChatPage = () => {
         httpAbortControllerRef.current.abort();
         httpAbortControllerRef.current = null;
       }
-      
+
       // Clean up SSE connection
       disconnectSSE();
-      
+
       // Clean up audio recording
       stopAudioRecording();
-      
+
       // Clean up streaming state
       setIsTyping(false);
       setStreamingMessage(null);
@@ -414,7 +414,7 @@ const ChatPage = () => {
         clearInterval(typewriterIntervalRef.current);
         typewriterIntervalRef.current = null;
       }
-      
+
     };
   }, [disconnectSSE]);
 
@@ -422,10 +422,10 @@ const ChatPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  
+
 
   // Handle streaming step updates
-  
+
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -444,9 +444,9 @@ const ChatPage = () => {
     setIsFocused(false); // Reset focus state after sending
     setIsInputExpanded(false); // Reset expanded state after sending
     setIsTyping(true);
-    
+
     resetPagination(); // Reset pagination when new message is sent
-    
+
     // Initialize streaming message
     const streamingId = Date.now() + 1;
     setStreamingMessage({
@@ -475,6 +475,7 @@ const ChatPage = () => {
           userId: user?.id || null,
           history: getHistory(),
           systemPrompt: (typeof localStorage !== 'undefined') ? (localStorage.getItem('system_prompt') || undefined) : undefined,
+          model: modelName || undefined,
           streaming: false
         }),
         signal: httpAbortControllerRef.current.signal
@@ -485,9 +486,9 @@ const ChatPage = () => {
       }
 
       const data = await response.json();
-      
+
       // Basic streaming output only: skip step orchestration
-      
+
       // Final response
       const finalResponse = {
         id: streamingId,
@@ -500,7 +501,7 @@ const ChatPage = () => {
         optimizationStats: data.optimization_stats || null,
         metadata: data.metadata || null
       };
-      
+
       setMessages(prev => [...prev, finalResponse]);
       setStreamingMessage(null);
     } catch (error) {
@@ -517,12 +518,12 @@ const ChatPage = () => {
         setStreamingMessage(null);
         return;
       }
-      
+
       console.error('Error calling AI API:', error);
-      
+
       // Enhanced error handling with retry suggestion
       let errorMessage = '抱歉，我现在无法连接到AI服务。';
-      
+
       if (error.code === 'NETWORK_ERROR' || error.message.includes('network')) {
         errorMessage += ' 这似乎是网络连接问题。请检查您的连接并重试。';
       } else if (error.response?.status >= 500) {
@@ -532,7 +533,7 @@ const ChatPage = () => {
       } else {
         errorMessage += ' 请稍后再试。';
       }
-      
+
       const errorResponse = {
         id: streamingId,
         type: 'bot',
@@ -540,7 +541,7 @@ const ChatPage = () => {
         timestamp: new Date(),
         isError: true
       };
-      
+
       setMessages(prev => [...prev, errorResponse]);
       setStreamingMessage(null);
     } finally {
@@ -558,11 +559,29 @@ const ChatPage = () => {
     });
   };
 
-  
+
 
 
 
   const quickActions = [];
+  const [modelName, setModelName] = useState('');
+
+  const handleCopyHistory = async () => {
+    const text = messages
+      .filter(m => m.type === 'user' || m.type === 'bot')
+      .map(m => {
+        const role = m.type === 'user' ? '用户' : 'AI';
+        return `${role}：${m.content}`;
+      })
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      return false;
+    }
+  };
 
   return (
     <div className="min-h-screen w-full relative overflow-hidden">
@@ -573,19 +592,17 @@ const ChatPage = () => {
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-emerald-300/70 to-emerald-50/50 opacity-60"></div>
       </div>
 
-      <NavBar isMobile={isMobile} isNavExpanded={isNavExpanded} setIsNavExpanded={setIsNavExpanded} user={user} />
+      <NavBar isMobile={isMobile} isNavExpanded={isNavExpanded} setIsNavExpanded={setIsNavExpanded} user={user} modelName={modelName} setModelName={setModelName} onCopyHistory={handleCopyHistory} />
 
-      <div 
-        className={`min-h-screen flex items-center justify-center px-4 py-8 relative z-10 transition-opacity duration-100 ease-in-out ${
-          isVisible ? 'opacity-100' : 'opacity-0'
-        }`}
+      <div
+        className={`min-h-screen flex items-center justify-center px-4 py-8 relative z-10 transition-opacity duration-100 ease-in-out ${isVisible ? 'opacity-100' : 'opacity-0'
+          }`}
         onClick={() => !isMobile && isNavExpanded && setIsNavExpanded(false)}
       >
-        <div className={`h-full flex flex-col transition-all duration-[400ms] max-md:w-full max-md:p-0 max-md:ml-0 ${
-          isMobile 
-            ? 'w-full p-4 ml-0' 
-            : (viewportWidth > 1440 ? 'w-3/5 ml-20 mr-6 p-6' : 'w-4/5 ml-20 mr-6 p-6')
-        }`}>
+        <div className={`h-full flex flex-col transition-all duration-[400ms] max-md:w-full max-md:p-0 max-md:ml-0 ${isMobile
+          ? 'w-full p-4 ml-0'
+          : (viewportWidth > 1440 ? 'w-3/5 ml-20 mr-6 p-6' : 'w-4/5 ml-20 mr-6 p-6')
+          }`}>
           {/* Header */}
           <div className="text-center mb-6">
             <div className="flex items-center justify-between w-full mb-4">
@@ -595,7 +612,7 @@ const ChatPage = () => {
                 </div>
                 <h1 className="text-3xl font-bold text-gray-900">AI智能伴侣聊天</h1>
               </div>
-              
+
 
             </div>
             <p className="text-gray-600">你的智能AI伴侣，提供有意义的对话和情感支持</p>
@@ -609,122 +626,116 @@ const ChatPage = () => {
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex items-start space-x-3 ${
-                    message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
-                  }`}
+                  className={`flex items-start space-x-3 ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
+                    }`}
                 >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    message.type === 'user'
-                      ? 'bg-gradient-to-br from-emerald-500 to-emerald-500/60'
-                      : 'bg-gradient-to-br from-slate-500 to-slate-500'
-                  }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.type === 'user'
+                    ? 'bg-gradient-to-br from-emerald-500 to-emerald-500/60'
+                    : 'bg-gradient-to-br from-slate-500 to-slate-500'
+                    }`}>
                     {message.type === 'user' ? (
                       <i className="fas fa-user text-white text-sm"></i>
                     ) : (
-                      <i className="fa-brands fa-connectdevelop text-white text-lg" style={{WebkitTextStroke: '1px currentColor'}}></i>
+                      <i className="fa-brands fa-connectdevelop text-white text-lg" style={{ WebkitTextStroke: '1px currentColor' }}></i>
                     )}
                   </div>
-                  <div className={`max-w-[90%] sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl ${
-                    message.type === 'user' ? 'text-left' : 'text-left'
-                  }`}>
-                    <div className={`inline-block p-4 rounded-2xl shadow-sm max-w-full ${
-                      message.type === 'user'
-                        ? 'bg-gradient-to-r from-sky-50 to-sky-50 text-black'
-                        : 'bg-white/80 text-gray-800 border border-gray-200/50'
+                  <div className={`max-w-[90%] sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl ${message.type === 'user' ? 'text-left' : 'text-left'
                     }`}>
+                    <div className={`inline-block p-4 rounded-2xl shadow-sm max-w-full ${message.type === 'user'
+                      ? 'bg-gradient-to-r from-sky-50 to-sky-50 text-black'
+                      : 'bg-white/80 text-gray-800 border border-gray-200/50'
+                      }`}>
                       <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
-                      
 
-                      
+
+
                       {message.data && (
                         <div className="space-y-2 text-xs text-emerald-700">
-                            {message.data.sentiment && (
-                              <div>
-                                <span className="font-medium">Sentiment:</span>
-                                <span className={`ml-1 px-2 py-1 rounded-full text-xs ${
-                                  message.data.sentiment === 'positive' ? 'bg-green-100 text-green-800' :
-                                  message.data.sentiment === 'negative' ? 'bg-red-100 text-red-800' :
+                          {message.data.sentiment && (
+                            <div>
+                              <span className="font-medium">Sentiment:</span>
+                              <span className={`ml-1 px-2 py-1 rounded-full text-xs ${message.data.sentiment === 'positive' ? 'bg-green-100 text-green-800' :
+                                message.data.sentiment === 'negative' ? 'bg-red-100 text-red-800' :
                                   'bg-gray-100 text-gray-800'
                                 }`}>
-                                  {message.data.sentiment === 'positive' ? 'Positive' :
-                                   message.data.sentiment === 'negative' ? 'Negative' : 'Neutral'}
-                                </span>
+                                {message.data.sentiment === 'positive' ? 'Positive' :
+                                  message.data.sentiment === 'negative' ? 'Negative' : 'Neutral'}
+                              </span>
+                            </div>
+                          )}
+                          {message.data.keywords && message.data.keywords.length > 0 && (
+                            <div>
+                              <span className="font-medium">Keywords:</span>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {message.data.keywords.map((keyword, idx) => (
+                                  <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                                    {keyword}
+                                  </span>
+                                ))}
                               </div>
-                            )}
-                            {message.data.keywords && message.data.keywords.length > 0 && (
-                              <div>
-                                <span className="font-medium">Keywords:</span>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {message.data.keywords.map((keyword, idx) => (
-                                    <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
-                                      {keyword}
-                                    </span>
-                                  ))}
-                                </div>
+                            </div>
+                          )}
+                          {message.data.summary && (
+                            <div>
+                              <span className="font-medium">Summary:</span>
+                              <p className="mt-1 text-emerald-600">{message.data.summary}</p>
+                            </div>
+                          )}
+                          {message.data.topics && message.data.topics.length > 0 && (
+                            <div>
+                              <span className="font-medium">Topics:</span>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {message.data.topics.map((topic, idx) => (
+                                  <span key={idx} className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
+                                    {topic}
+                                  </span>
+                                ))}
                               </div>
-                            )}
-                            {message.data.summary && (
-                              <div>
-                                <span className="font-medium">Summary:</span>
-                                <p className="mt-1 text-emerald-600">{message.data.summary}</p>
-                              </div>
-                            )}
-                            {message.data.topics && message.data.topics.length > 0 && (
-                              <div>
-                                <span className="font-medium">Topics:</span>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {message.data.topics.map((topic, idx) => (
-                                    <span key={idx} className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
-                                      {topic}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Display user data if available */}
-                            {(message.data.user_data || message.data.accounts) && (message.data.user_data?.length > 0 || message.data.accounts?.length > 0) && (
-                              <div className="overflow-x-auto max-w-full">
-                                {renderDataTable(message.data.user_data || message.data.accounts, 'accounts', message.id)}
-                              </div>
-                            )}
-                            
-                            {/* Display conversation history data if available */}
-                            {message.data.conversations && message.data.conversations.length > 0 && (
-                              <div className="overflow-x-auto max-w-full">
-                                {renderDataTable(message.data.conversations, 'conversations', message.id)}
-                              </div>
-                            )}
-                            {message.data.tts && (message.data.tts.msUrl || message.data.tts.url) && (
-                              <audio
-                                autoPlay
-                                playsInline
-                                preload="metadata"
-                                src={message.data.tts.msUrl || message.data.tts.url}
-                                ref={message.data.tts.msUrl ? (el) => { const r = ttsMediaRefs.current.get(message.id); if (r) r.audioEl = el; } : undefined}
-                                onLoadedMetadata={(e) => { try { e.currentTarget.play(); } catch (err) { console.error('audio play error', err); } }}
-                                onError={(e) => { console.error('audio element error', e.currentTarget.error); }}
-                                style={{ display: 'none' }}
-                              />
-                            )}
-                            
+                            </div>
+                          )}
+
+                          {/* Display user data if available */}
+                          {(message.data.user_data || message.data.accounts) && (message.data.user_data?.length > 0 || message.data.accounts?.length > 0) && (
+                            <div className="overflow-x-auto max-w-full">
+                              {renderDataTable(message.data.user_data || message.data.accounts, 'accounts', message.id)}
+                            </div>
+                          )}
+
+                          {/* Display conversation history data if available */}
+                          {message.data.conversations && message.data.conversations.length > 0 && (
+                            <div className="overflow-x-auto max-w-full">
+                              {renderDataTable(message.data.conversations, 'conversations', message.id)}
+                            </div>
+                          )}
+                          {message.data.tts && (message.data.tts.msUrl || message.data.tts.url) && (
+                            <audio
+                              autoPlay
+                              playsInline
+                              preload="metadata"
+                              src={message.data.tts.msUrl || message.data.tts.url}
+                              ref={message.data.tts.msUrl ? (el) => { const r = ttsMediaRefs.current.get(message.id); if (r) r.audioEl = el; } : undefined}
+                              onLoadedMetadata={(e) => { try { e.currentTarget.play(); } catch (err) { console.error('audio play error', err); } }}
+                              onError={(e) => { console.error('audio element error', e.currentTarget.error); }}
+                              style={{ display: 'none' }}
+                            />
+                          )}
+
                         </div>
                       )}
                     </div>
-                    <p className={`text-xs text-gray-500 mt-1 ${
-                      message.type === 'user' ? 'text-right' : 'text-left'
-                    }`}>
+                    <p className={`text-xs text-gray-500 mt-1 ${message.type === 'user' ? 'text-right' : 'text-left'
+                      }`}>
                       {formatTimestamp(message.timestamp)}
                     </p>
                   </div>
                 </div>
               ))}
-              
+
               {/* Display streaming message */}
               {streamingMessage && (
                 <div className="flex items-start space-x-3">
                   <div className="w-8 h-8 bg-gradient-to-br from-slate-500 to-slate-500 rounded-full flex items-center justify-center flex-shrink-0">
-                    <i className="fa-brands fa-connectdevelop text-white text-lg" style={{WebkitTextStroke: '1px currentColor'}}></i>
+                    <i className="fa-brands fa-connectdevelop text-white text-lg" style={{ WebkitTextStroke: '1px currentColor' }}></i>
                   </div>
                   <div className="max-w-[90%] sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl text-left">
                     <div className="inline-block p-4 rounded-2xl shadow-sm bg-white/80 text-gray-800 border border-gray-200/50 max-w-full">
@@ -736,19 +747,19 @@ const ChatPage = () => {
                           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                         </div>
                       </div>
-                    
-                      
+
+
                       {/* Display streaming data if available */}
                       {streamingMessage.data && (
                         <div>
-                          
+
                           {/* Display user data if available */}
                           {(streamingMessage.data.user_data || streamingMessage.data.accounts) && (streamingMessage.data.user_data?.length > 0 || streamingMessage.data.accounts?.length > 0) && (
                             <div className="overflow-x-auto max-w-full">
                               {renderDataTable(streamingMessage.data.user_data || streamingMessage.data.accounts, 'accounts', streamingMessage.id)}
                             </div>
                           )}
-                          
+
                           {/* Display conversation history data if available */}
                           {streamingMessage.data.conversations && streamingMessage.data.conversations.length > 0 && (
                             <div className="overflow-x-auto max-w-full">
@@ -768,9 +779,8 @@ const ChatPage = () => {
             </div>
 
             {/* Input Area - Floating at bottom */}
-            <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 md:pb-0 pb-[max(1.25rem,env(safe-area-inset-bottom))] mx-auto transition-all duration-[400ms] ease-out max-w-[calc(100vw-1rem)] ${
-              isFocused || inputMessage.trim() ? 'w-[800px]' : 'w-[560px]'
-            }`}>
+            <div className={`fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 md:pb-0 pb-[max(1.25rem,env(safe-area-inset-bottom))] mx-auto transition-all duration-[400ms] ease-out max-w-[calc(100vw-1rem)] ${isFocused || inputMessage.trim() ? 'w-[800px]' : 'w-[560px]'
+              }`}>
               {/* Quick Suggestions */}
               <div className="mb-3 flex flex-wrap gap-2 justify-center">
                 {quickActions.map((action, index) => (
@@ -792,17 +802,16 @@ const ChatPage = () => {
                   </div>
                 </div>
               )}
-              
+
               <form onSubmit={handleSendMessage}>
                 <div className="relative">
                   {isRecording ? (
-                    <div 
-                      className={`w-full rounded-3xl text-gray-900 outline-none transition-all duration-300 shadow-lg backdrop-blur-lg flex items-center justify-center py-3 h-[48px] cursor-pointer select-none border ${
-                        isActiveRecording 
-                          ? (isTouchCancel ? 'bg-white border-red-500 border-2 shadow-red-200/50 shadow-lg' : 'bg-white border-emerald-400 border-2 shadow-emerald-200/50 shadow-lg') 
-                          : 'bg-white/90 hover:bg-white/95 border-emerald-200/60'
-                      }`}
-                      style={{transform: 'translateY(-6px)', touchAction: 'none'}}
+                    <div
+                      className={`w-full rounded-3xl text-gray-900 outline-none transition-all duration-300 shadow-lg backdrop-blur-lg flex items-center justify-center py-3 h-[48px] cursor-pointer select-none border ${isActiveRecording
+                        ? (isTouchCancel ? 'bg-white border-red-500 border-2 shadow-red-200/50 shadow-lg' : 'bg-white border-emerald-400 border-2 shadow-emerald-200/50 shadow-lg')
+                        : 'bg-white/90 hover:bg-white/95 border-emerald-200/60'
+                        }`}
+                      style={{ transform: 'translateY(-6px)', touchAction: 'none' }}
                       onMouseDown={(e) => {
                         const aiReplying = !!(streamingMessage && streamingMessage.isStreaming) || isStoppingReply;
                         if (aiReplying) { e.preventDefault(); return; }
@@ -893,18 +902,18 @@ const ChatPage = () => {
                               // Gradient colors matching screenshots: light blue → deep blue → violet → magenta → light pink
                               const colors = [
                                 'bg-blue-200', 'bg-blue-300', 'bg-blue-400', 'bg-blue-500', 'bg-blue-600',
-                                'bg-indigo-500', 'bg-purple-500', 'bg-purple-600', 'bg-pink-500', 
+                                'bg-indigo-500', 'bg-purple-500', 'bg-purple-600', 'bg-pink-500',
                                 'bg-pink-400', 'bg-pink-300', 'bg-pink-200', 'bg-pink-100', 'bg-pink-50', 'bg-pink-50'
                               ];
                               const baseHeight = 4; // Minimum height for baseline
                               const maxHeight = 20; // Maximum height for peaks
                               const dynamicHeight = baseHeight + (height * maxHeight); // Scale based on audio level
-                              
+
                               return (
-                                <div 
+                                <div
                                   key={index}
                                   className={`w-2 ${colors[index]} rounded-full transition-all duration-75`}
-                                  style={{height: `${dynamicHeight}px`}}
+                                  style={{ height: `${dynamicHeight}px` }}
                                 ></div>
                               );
                             })}
@@ -950,9 +959,8 @@ const ChatPage = () => {
                         }, 150);
                       }}
                       placeholder="发送消息..."
-                      className={`w-full px-4 pr-12 bg-white/90 rounded-3xl border border-emerald-200/60 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-emerald-400 focus:border-transparent outline-none transition-all duration-300 shadow-lg backdrop-blur-lg resize-none chat-input-scrollbar ${
-                        isInputExpanded ? 'py-6 min-h-[120px] max-h-[200px]' : 'py-3 h-[48px] min-h-[48px]'
-                      }`}
+                      className={`w-full px-4 pr-12 bg-white/90 rounded-3xl border border-emerald-200/60 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-emerald-400 focus:border-transparent outline-none transition-all duration-300 shadow-lg backdrop-blur-lg resize-none chat-input-scrollbar ${isInputExpanded ? 'py-6 min-h-[120px] max-h-[200px]' : 'py-3 h-[48px] min-h-[48px]'
+                        }`}
                       style={{
                         // Ensure content doesn't overflow beyond rounded borders
                         scrollbarGutter: 'stable',
@@ -962,9 +970,8 @@ const ChatPage = () => {
                       rows={isInputExpanded ? 4 : 1}
                     />
                   )}
-                  <div className={`absolute right-1 flex items-center space-x-2 ${
-                    isRecording ? 'top-1/2 transform -translate-y-1/2' : 'bottom-2.5'
-                  }`} style={isRecording ? {transform: 'translateY(calc(-50% - 6px))'} : {}}>
+                  <div className={`absolute right-1 flex items-center space-x-2 ${isRecording ? 'top-1/2 transform -translate-y-1/2' : 'bottom-2.5'
+                    }`} style={isRecording ? { transform: 'translateY(calc(-50% - 6px))' } : {}}>
                     {isRecording ? (
                       (() => {
                         const aiReplying = !!(streamingMessage && streamingMessage.isStreaming);
@@ -989,9 +996,8 @@ const ChatPage = () => {
                                 setIsInputExpanded(false);
                               }
                             }}
-                            className={`w-10 h-10 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 flex items-center justify-center ${
-                              isActiveRecording ? 'opacity-0 pointer-events-none' : 'opacity-100'
-                            }`}
+                            className={`w-10 h-10 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 flex items-center justify-center ${isActiveRecording ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                              }`}
                           >
                             <i className="fas fa-keyboard text-sm"></i>
                           </button>
@@ -1023,25 +1029,24 @@ const ChatPage = () => {
                           type={isTyping ? "button" : "submit"}
                           disabled={!isTyping && !inputMessage.trim()}
                           onClick={isTyping ? stopAll : undefined}
-                          className={`relative w-10 h-10 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
-                            isTyping 
-                              ? 'bg-red-500 hover:bg-red-600' 
-                              : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700'
-                          }`}
+                          className={`relative w-10 h-10 text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${isTyping
+                            ? 'bg-red-500 hover:bg-red-600'
+                            : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700'
+                            }`}
                         >
-                        {isTyping ? (
-                          <>
-                            <div className="pointer-events-none absolute inset-0 border-2 border-red-200 rounded-full animate-spin border-t-white"></div>
-                            <i className="fas fa-stop text-white text-xs relative z-10"></i>
-                          </>
-                        ) : (
-                          <i className="fas fa-paper-plane text-sm"></i>
-                        )}
-                      </button>
+                          {isTyping ? (
+                            <>
+                              <div className="pointer-events-none absolute inset-0 border-2 border-red-200 rounded-full animate-spin border-t-white"></div>
+                              <i className="fas fa-stop text-white text-xs relative z-10"></i>
+                            </>
+                          ) : (
+                            <i className="fas fa-paper-plane text-sm"></i>
+                          )}
+                        </button>
                       </>
                     )}
+                  </div>
                 </div>
-              </div>
               </form>
             </div>
           </div>

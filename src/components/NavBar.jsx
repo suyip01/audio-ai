@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 
-const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
+const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user, modelName, setModelName, onCopyHistory }) => {
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   const [promptText, setPromptText] = useState('');
   const [saveFeedback, setSaveFeedback] = useState('');
+  const [isModelOpen, setIsModelOpen] = useState(false);
+  const [saveModelFeedback, setSaveModelFeedback] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState('');
   useEffect(() => {
     try {
       const stored = typeof localStorage !== 'undefined' ? (localStorage.getItem('system_prompt') || '') : '';
       setPromptText(stored);
-    } catch {}
+    } catch { }
   }, []);
   const onSavePrompt = () => {
     try {
@@ -16,7 +19,21 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
       setSaveFeedback('已保存');
       setTimeout(() => setSaveFeedback(''), 1200);
       setIsPromptOpen(false);
-    } catch {}
+    } catch { }
+  };
+  const onSaveModel = () => {
+    setSaveModelFeedback('已应用');
+    setTimeout(() => setSaveModelFeedback(''), 1200);
+    setIsModelOpen(false);
+  };
+  const handleCopyClick = async () => {
+    if (onCopyHistory) {
+      const success = await onCopyHistory();
+      if (success) {
+        setCopyFeedback('已复制');
+        setTimeout(() => setCopyFeedback(''), 1200);
+      }
+    }
   };
   return (
     <>
@@ -31,16 +48,14 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
         </div>
       )}
 
-      <div className={`fixed z-50 transition-all duration-[400ms] ${
-        isMobile 
-          ? `top-6 bottom-6 ${isNavExpanded ? 'left-6' : 'left-0'} ${isNavExpanded ? 'translate-x-0' : '-translate-x-full'}`
-          : 'top-6 bottom-6 left-6'
-      }`}>
-        <div className={`backdrop-blur-lg shadow-xl border border-white/30 p-2 transition-all duration-[400ms] ${
-          isMobile 
-            ? 'bg-white/70 w-72 h-full rounded-3xl'
-            : `bg-white/50 h-full ${isNavExpanded ? 'w-72 rounded-3xl' : 'w-14 rounded-2xl'}`
+      <div className={`fixed z-50 transition-all duration-[400ms] ${isMobile
+        ? `top-6 bottom-6 ${isNavExpanded ? 'left-6' : 'left-0'} ${isNavExpanded ? 'translate-x-0' : '-translate-x-full'}`
+        : 'top-6 bottom-6 left-6'
         }`}>
+        <div className={`backdrop-blur-lg shadow-xl border border-white/30 p-2 transition-all duration-[400ms] ${isMobile
+          ? 'bg-white/70 w-72 h-full rounded-3xl'
+          : `bg-white/50 h-full ${isNavExpanded ? 'w-72 rounded-3xl' : 'w-14 rounded-2xl'}`
+          }`}>
           <div className="flex flex-col justify-between h-full">
             <div className="flex flex-col space-y-4">
               {isMobile && isNavExpanded && (
@@ -53,7 +68,7 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
                   </button>
                 </div>
               )}
-              <button 
+              <button
                 onClick={() => window.location.href = '/'}
                 className={`${(isNavExpanded || isMobile) ? 'w-full' : 'w-10'} h-10 bg-gradient-to-br from-emerald-400/80 to-emerald-500/80 hover:from-emerald-500/90 hover:to-emerald-600/90 rounded-xl flex items-center transition-all duration-[400ms] shadow-lg hover:shadow-xl group relative overflow-hidden`}
                 title="Back to Home"
@@ -66,7 +81,7 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
                 </div>
               </button>
 
-              <button 
+              <button
                 onClick={() => { setIsPromptOpen(true); }}
                 className={`${(isNavExpanded || isMobile) ? 'w-full' : 'w-10'} h-10 rounded-xl hover:bg-white flex items-center transition-all duration-[400ms] hover:shadow-xl group relative overflow-hidden`}
                 title="提示词"
@@ -79,7 +94,20 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
                 </div>
               </button>
 
-              <button 
+              <button
+                onClick={() => { setIsModelOpen(true); }}
+                className={`${(isNavExpanded || isMobile) ? 'w-full' : 'w-10'} h-10 rounded-xl hover:bg-white flex items-center transition-all duration-[400ms] hover:shadow-xl group relative overflow-hidden`}
+                title="模型"
+              >
+                <div className="flex items-center w-full">
+                  <div className="w-10 flex justify-center flex-shrink-0">
+                    <i className="fas fa-cube text-emerald-700 text-lg group-hover:scale-110 transition-transform"></i>
+                  </div>
+                  <span className={`text-emerald-700 text-lg font-medium whitespace-nowrap transition-all duration-[400ms] ${(isNavExpanded || isMobile) ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}`}>模型</span>
+                </div>
+              </button>
+
+              <button
                 onClick={() => {
                   if (isMobile) {
                     setIsNavExpanded(false);
@@ -98,7 +126,22 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
                 </div>
               </button>
 
-              <button 
+              <button
+                onClick={handleCopyClick}
+                className={`${(isNavExpanded || isMobile) ? 'w-full' : 'w-10'} h-10 rounded-xl hover:bg-white flex items-center transition-all duration-[400ms] hover:shadow-xl group relative overflow-hidden`}
+                title="Copy History"
+              >
+                <div className="flex items-center w-full">
+                  <div className="w-10 flex justify-center flex-shrink-0">
+                    <i className={`fas ${copyFeedback ? 'fa-check' : 'fa-copy'} text-emerald-700 text-lg group-hover:scale-110 transition-transform`}></i>
+                  </div>
+                  <span className={`text-emerald-700 text-lg font-medium whitespace-nowrap transition-all duration-[400ms] ${(isNavExpanded || isMobile) ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}`}>
+                    {copyFeedback || '复制记录'}
+                  </span>
+                </div>
+              </button>
+
+              <button
                 onClick={() => {
                   if (isMobile) {
                     setIsNavExpanded(false);
@@ -117,7 +160,7 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
                 </div>
               </button>
 
-              <button 
+              <button
                 onClick={() => {
                   if (isMobile) {
                     setIsNavExpanded(false);
@@ -136,7 +179,7 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
                 </div>
               </button>
 
-              <button 
+              <button
                 onClick={() => {
                   if (isMobile) {
                     setIsNavExpanded(false);
@@ -160,7 +203,7 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
 
             <div className="flex flex-col space-y-4">
               <div className="flex items-center">
-                <button 
+                <button
                   onClick={() => {
                     if (isMobile) {
                       setIsNavExpanded(false);
@@ -181,7 +224,7 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
       </div>
 
       {isMobile && isNavExpanded && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity duration-300"
           onClick={() => setIsNavExpanded(false)}
         />
@@ -216,6 +259,57 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
                 <div className="flex items-center space-x-3">
                   <button className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700" onClick={() => setIsPromptOpen(false)}>取消</button>
                   <button className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg" onClick={onSavePrompt}>保存</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {isModelOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60]" onClick={() => setIsModelOpen(false)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+            <div className="bg-white/70 backdrop-blur-lg shadow-2xl border border-white/30 rounded-3xl w-full max-w-[500px] p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-400/80 to-blue-500/80 flex items-center justify-center text-white">
+                    <i className="fas fa-cube"></i>
+                  </div>
+                  <span className="text-emerald-700 text-xl font-semibold">模型设置</span>
+                </div>
+                <button className="w-10 h-10 rounded-xl hover:bg-white/50 flex items-center justify-center" onClick={() => setIsModelOpen(false)}>
+                  <i className="fas fa-times text-emerald-700"></i>
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-emerald-700 mb-2">选择或输入模型名称</label>
+                  <input
+                    type="text"
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value)}
+                    placeholder="例如: gpt-4o, gpt-3.5-turbo"
+                    className="w-full rounded-xl p-3 bg-white/80 border border-emerald-200/60 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-emerald-400 focus:border-transparent outline-none text-sm"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {['Qwen/Qwen3-Max', 'Qwen/Qwen-Plus', 'Qwen/Qwen3-235B-A22B', 'ByteDance/doubao-seed-1.6-thinking', 'ByteDance/doubao-1-5-pro-256k-250115', 'ByteDance/doubao-1.5-thinking-vision-pro', 'deepseek-ai/DeepSeek-V3-0324', 'deepseek-ai/DeepSeek-V3.1', 'deepseek-ai/DeepSeek-R1-0528', 'gemini-2.5-pro', 'openai/gpt-4o', 'zai-org/glm-4.6'].map(m => (
+                    <button
+                      key={m}
+                      onClick={() => setModelName(m)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${modelName === m ? 'bg-emerald-500 text-white' : 'bg-white/50 text-emerald-700 hover:bg-white/80'}`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-6 flex items-center justify-between">
+                <span className="text-emerald-700 text-sm">{saveModelFeedback}</span>
+                <div className="flex items-center space-x-3">
+                  <button className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700" onClick={() => setIsModelOpen(false)}>取消</button>
+                  <button className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg" onClick={onSaveModel}>保存</button>
                 </div>
               </div>
             </div>

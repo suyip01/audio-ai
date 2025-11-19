@@ -36,8 +36,8 @@ const upload = multer({
 
 // 健康检查接口
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     config: {
       model: config.asr.model,
@@ -72,10 +72,10 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
     let history = [];
     try {
       if (historyRaw) history = JSON.parse(historyRaw);
-    } catch {}
+    } catch { }
 
     console.log("开始处理音频转录任务...");
-    
+
     res.write(`data: ${JSON.stringify({ type: 'transcription_start', message: '开始转录...' })}\n\n`);
 
     try {
@@ -83,42 +83,42 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
       console.log(`正在分割音频，片段时长: ${chunkDuration}秒`);
       const audioChunks = await audioService.splitAudio(req.file.buffer, chunkDuration);
       console.log(`✅ 音频分割完成，共得到 ${audioChunks.length} 个片段。`);
-      
+
       if (!audioChunks || audioChunks.length === 0) {
         throw new Error('无法分割音频或音频为空。');
       }
-      
+
       const transcriptions = [];
-      
+
       // 第二步：按片段顺序串行处理（完全参照Python的process_audio函数）
       for (let i = 0; i < audioChunks.length; i++) {
         const chunk = audioChunks[i];
         console.log(`\n正在处理第 ${i + 1}/${audioChunks.length} 个音频片段...`);
-        
-        res.write(`data: ${JSON.stringify({ 
-          type: 'chunk_start', 
+
+        res.write(`data: ${JSON.stringify({
+          type: 'chunk_start',
           message: `正在处理第 ${i + 1}/${audioChunks.length} 个音频片段...`
         })}\n\n`);
-        
+
         // 完全参照Python：调用流式转录函数
         let chunkTranscription = "";
         const generator = transcriptionService.transcribeAudioChunkStream(chunk, prompt);
-        
+
         for await (const transcriptionChunk of generator) {
           chunkTranscription += transcriptionChunk;
-          
+
           // 发送转录内容片段
-          res.write(`data: ${JSON.stringify({ 
-            type: 'transcription_chunk', 
+          res.write(`data: ${JSON.stringify({
+            type: 'transcription_chunk',
             content: transcriptionChunk,
             chunkIndex: i + 1,
             totalChunks: audioChunks.length
           })}\n\n`);
-          
+
           // 模拟实时效果，添加小延迟
           await new Promise(resolve => setTimeout(resolve, 50));
         }
-        
+
         if (chunkTranscription) {
           transcriptions.push(chunkTranscription);
           console.log(`✅ 第 ${i + 1} 个片段转录完成`);
@@ -129,10 +129,10 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
 
       // 第三步：合并所有转录结果（完全参照Python）
       const fullTranscription = transcriptions.join("");
-      
+
       // 发送完成消息
-      res.write(`data: ${JSON.stringify({ 
-        type: 'transcription_complete', 
+      res.write(`data: ${JSON.stringify({
+        type: 'transcription_complete',
         content: fullTranscription,
         message: '转录完成',
         totalChunks: audioChunks.length
@@ -175,12 +175,12 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
       }
 
       console.log("流式转录完成，总长度:", fullTranscription.length);
-      
+
     } catch (error) {
       console.error("转录过程出错:", error);
-      res.write(`data: ${JSON.stringify({ 
-        type: 'error', 
-        error: error.message 
+      res.write(`data: ${JSON.stringify({
+        type: 'error',
+        error: error.message
       })}\n\n`);
     }
 
@@ -188,9 +188,9 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
 
   } catch (error) {
     console.error("处理音频转录请求出错:", error);
-    res.status(500).json({ 
-      error: '音频转录失败', 
-      message: error.message 
+    res.status(500).json({
+      error: '音频转录失败',
+      message: error.message
     });
   }
 });
@@ -201,11 +201,12 @@ app.post('/api/text/chat', async (req, res) => {
     const latestUserText = req.body?.message || '';
     const history = req.body?.history || [];
     const systemPrompt = req.body?.systemPrompt || null;
+    const model = req.body?.model || null;
     if (!latestUserText || !latestUserText.trim()) {
       return res.status(400).json({ error: '缺少有效的输入文本' });
     }
 
-    const aiResponse = await textGenerationService.generateResponse(history, latestUserText, systemPrompt);
+    const aiResponse = await textGenerationService.generateResponse(history, latestUserText, systemPrompt, model);
     return res.json({ response: aiResponse, output: aiResponse, summary: aiResponse, data: null, response_type: 'text_chat', optimization_stats: null, metadata: null });
   } catch (error) {
     console.error('文字聊天接口错误:', error);
@@ -216,19 +217,19 @@ app.post('/api/text/chat', async (req, res) => {
 // 错误处理中间件
 app.use((error, req, res, next) => {
   console.error('服务器错误:', error);
-  
+
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ 
-        error: '文件过大', 
-        message: `音频文件不能超过 ${config.audio.maxSize / (1024 * 1024)}MB` 
+      return res.status(400).json({
+        error: '文件过大',
+        message: `音频文件不能超过 ${config.audio.maxSize / (1024 * 1024)}MB`
       });
     }
   }
-  
-  res.status(500).json({ 
-    error: '服务器内部错误', 
-    message: error.message 
+
+  res.status(500).json({
+    error: '服务器内部错误',
+    message: error.message
   });
 });
 
