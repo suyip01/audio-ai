@@ -1,7 +1,8 @@
-export async function uploadAudioSSE({ wavBlob, history, url = 'http://localhost:3001/api/audio/transcribe-stream', onEvent, signal }) {
+export async function uploadAudioSSE({ wavBlob, history, url = 'http://localhost:3001/api/audio/transcribe-stream', onEvent, signal, systemPrompt }) {
   const formData = new FormData();
   formData.append('audio', wavBlob, 'recording.wav');
   if (history) formData.append('history', JSON.stringify(history));
+  if (systemPrompt) formData.append('systemPrompt', systemPrompt);
   const response = await fetch(url, {
     method: 'POST',
     headers: {

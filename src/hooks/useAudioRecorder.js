@@ -147,7 +147,8 @@ export default function useAudioRecorder({ onBeforeUpload, getHistory, onStreamE
         if (onBeforeUpload) messageId = onBeforeUpload(wavBlob);
         const history = getHistory ? getHistory() : [];
         uploadAbortControllerRef.current = new AbortController();
-        await uploadAudioSSE({ wavBlob, history, url, signal: uploadAbortControllerRef.current.signal, onEvent: (data) => {
+        const systemPrompt = (typeof localStorage !== 'undefined') ? (localStorage.getItem('system_prompt') || null) : null;
+        await uploadAudioSSE({ wavBlob, history, url, signal: uploadAbortControllerRef.current.signal, systemPrompt, onEvent: (data) => {
           if (onStreamEvent) onStreamEvent(data, messageId);
         }});
       } catch (e) {

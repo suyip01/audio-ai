@@ -139,7 +139,8 @@ app.post('/api/audio/transcribe-stream', upload.single('audio'), async (req, res
       })}\n\n`);
 
       try {
-        const aiResponse = await textGenerationService.generateResponse(history, fullTranscription);
+        const systemPrompt = req.body?.systemPrompt || null;
+        const aiResponse = await textGenerationService.generateResponse(history, fullTranscription, systemPrompt);
         res.write(`data: ${JSON.stringify({
           type: 'chat_complete',
           response: { content: aiResponse }
@@ -199,11 +200,12 @@ app.post('/api/text/chat', async (req, res) => {
   try {
     const latestUserText = req.body?.message || '';
     const history = req.body?.history || [];
+    const systemPrompt = req.body?.systemPrompt || null;
     if (!latestUserText || !latestUserText.trim()) {
       return res.status(400).json({ error: '缺少有效的输入文本' });
     }
 
-    const aiResponse = await textGenerationService.generateResponse(history, latestUserText);
+    const aiResponse = await textGenerationService.generateResponse(history, latestUserText, systemPrompt);
     return res.json({ response: aiResponse, output: aiResponse, summary: aiResponse, data: null, response_type: 'text_chat', optimization_stats: null, metadata: null });
   } catch (error) {
     console.error('文字聊天接口错误:', error);

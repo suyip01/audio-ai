@@ -1,6 +1,23 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
+  const [isPromptOpen, setIsPromptOpen] = useState(false);
+  const [promptText, setPromptText] = useState('');
+  const [saveFeedback, setSaveFeedback] = useState('');
+  useEffect(() => {
+    try {
+      const stored = typeof localStorage !== 'undefined' ? (localStorage.getItem('system_prompt') || '') : '';
+      setPromptText(stored);
+    } catch {}
+  }, []);
+  const onSavePrompt = () => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('system_prompt', promptText || '');
+      setSaveFeedback('已保存');
+      setTimeout(() => setSaveFeedback(''), 1200);
+      setIsPromptOpen(false);
+    } catch {}
+  };
   return (
     <>
       {isMobile && !isNavExpanded && (
@@ -46,6 +63,19 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
                     <i className="fas fa-home text-white text-lg group-hover:scale-110 transition-transform"></i>
                   </div>
                   <span className={`text-white text-lg font-medium whitespace-nowrap transition-all duration-[400ms] ${(isNavExpanded || isMobile) ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}`}>首页</span>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => { setIsPromptOpen(true); }}
+                className={`${(isNavExpanded || isMobile) ? 'w-full' : 'w-10'} h-10 rounded-xl hover:bg-white flex items-center transition-all duration-[400ms] hover:shadow-xl group relative overflow-hidden`}
+                title="提示词"
+              >
+                <div className="flex items-center w-full">
+                  <div className="w-10 flex justify-center flex-shrink-0">
+                    <i className="fas fa-file-alt text-emerald-700 text-lg group-hover:scale-110 transition-transform"></i>
+                  </div>
+                  <span className={`text-emerald-700 text-lg font-medium whitespace-nowrap transition-all duration-[400ms] ${(isNavExpanded || isMobile) ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2'}`}>提示词</span>
                 </div>
               </button>
 
@@ -155,6 +185,42 @@ const NavBar = ({ isMobile, isNavExpanded, setIsNavExpanded, user }) => {
           className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity duration-300"
           onClick={() => setIsNavExpanded(false)}
         />
+      )}
+
+      {isPromptOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60]" onClick={() => setIsPromptOpen(false)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+            <div className="bg-white/70 backdrop-blur-lg shadow-2xl border border-white/30 rounded-3xl w-full max-w-[820px] p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400/80 to-emerald-500/80 flex items-center justify-center text-white">
+                    <i className="fas fa-file-alt"></i>
+                  </div>
+                  <span className="text-emerald-700 text-xl font-semibold">系统提示词编辑</span>
+                </div>
+                <button className="w-10 h-10 rounded-xl hover:bg-white/50 flex items-center justify-center" onClick={() => setIsPromptOpen(false)}>
+                  <i className="fas fa-times text-emerald-700"></i>
+                </button>
+              </div>
+              <div>
+                <textarea
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                  placeholder="在此输入系统提示词..."
+                  className="w-full min-h-[280px] rounded-2xl p-4 bg-white/80 border border-emerald-200/60 text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-emerald-400 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-emerald-700 text-sm">{saveFeedback}</span>
+                <div className="flex items-center space-x-3">
+                  <button className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700" onClick={() => setIsPromptOpen(false)}>取消</button>
+                  <button className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg" onClick={onSavePrompt}>保存</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </>
   );

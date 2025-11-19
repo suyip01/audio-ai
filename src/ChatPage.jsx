@@ -474,6 +474,7 @@ const ChatPage = () => {
           sessionId: sessionId,
           userId: user?.id || null,
           history: getHistory(),
+          systemPrompt: (typeof localStorage !== 'undefined') ? (localStorage.getItem('system_prompt') || undefined) : undefined,
           streaming: false
         }),
         signal: httpAbortControllerRef.current.signal
